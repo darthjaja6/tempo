@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tempo"
+version = "0.1.0"
+description = "Fast, deadline-aware C++/CUDA serving engine for dual-system (System 2 + System 1) robot policies"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.5",
+    "safetensors>=0.4",
+    "tokenizers>=0.19",
+]
+
+[project.urls]
+Repository = "https://github.com/darthjaja6/tempo"
+
+[tool.setuptools.packages.find]
+include = ["tempo*"]

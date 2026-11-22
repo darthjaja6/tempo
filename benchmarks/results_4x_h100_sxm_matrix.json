@@ -1,0 +1,941 @@
+{
+  "model": "lerobot/pi05_base",
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "gpu_count_visible": 4,
+  "colocated_4gpu": {
+    "model": "lerobot/pi05_base",
+    "model_params_billions": 2.827,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "num_gpus_used": 4,
+    "topology": "4-GPU Colocated Micro-Sliced",
+    "slow_devices": [
+      [
+        0
+      ],
+      [
+        1
+      ],
+      [
+        2
+      ],
+      [
+        3
+      ]
+    ],
+    "fast_devices": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "deadline_ms": 30.0,
+    "stage0_parity": {
+      "bf16_splice_cos_sim": 0.999997,
+      "fp8_chunk_cos_sim": 0.999866,
+      "underruns": 0,
+      "ref_step0_norm": 0.0,
+      "calibration": {
+        "mode": "colocated",
+        "slow_devices": [
+          [
+            0
+          ],
+          [
+            1
+          ],
+          [
+            2
+          ],
+          [
+            3
+          ]
+        ],
+        "fast_devices": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "p2p_direct": false,
+        "num_slow_slices": 24,
+        "max_slow_slice_ms": 0.6237760186195374,
+        "slow_bucket_total_ms": {
+          "1": 13.1
+        },
+        "slow_stage_bucket_ms": [
+          {
+            "1": 13.1
+          }
+        ],
+        "mean_slow_slice_ms": 0.545845332245032,
+        "fast_bucket_ms": {
+          "1": 18.806304931640625
+        },
+        "tsc_pool_pages": 648
+      }
+    },
+    "workload1_traffic": {
+      "tempo_slo_goodput": 4,
+      "tempo_goodput_per_gpu": 1.0,
+      "baseline_slo_goodput": 0,
+      "baseline_goodput_per_gpu": 0.0,
+      "tempo_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 20.55,
+          "fast_ttac_p99_ms": 26.82,
+          "fast_aoi_p99_ms": 113.35,
+          "slow_aoi_p50_ms": 318.12,
+          "slow_aoi_p99_ms": 638.65,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.89,
+          "cluster_vram_gb": 23.55,
+          "hard_underruns": 0,
+          "slo_met": true
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 20.8,
+          "fast_ttac_p99_ms": 36.98,
+          "fast_aoi_p99_ms": 113.28,
+          "slow_aoi_p50_ms": 335.76,
+          "slow_aoi_p99_ms": 685.97,
+          "fast_preemptions": 21,
+          "peak_vram_gb": 5.89,
+          "cluster_vram_gb": 23.55,
+          "hard_underruns": 1,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 28.33,
+          "fast_ttac_p99_ms": 40.54,
+          "fast_aoi_p99_ms": 113.59,
+          "slow_aoi_p50_ms": 425.29,
+          "slow_aoi_p99_ms": 952.0,
+          "fast_preemptions": 138,
+          "peak_vram_gb": 5.89,
+          "cluster_vram_gb": 23.56,
+          "hard_underruns": 2,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 32.01,
+          "fast_ttac_p99_ms": 48.45,
+          "fast_aoi_p99_ms": 111.05,
+          "slow_aoi_p50_ms": 1031.75,
+          "slow_aoi_p99_ms": 1867.66,
+          "fast_preemptions": 309,
+          "peak_vram_gb": 5.89,
+          "cluster_vram_gb": 23.56,
+          "hard_underruns": 33,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 46.37,
+          "fast_ttac_p99_ms": 72.02,
+          "fast_aoi_p99_ms": 120.74,
+          "slow_aoi_p50_ms": 1734.91,
+          "slow_aoi_p99_ms": 3205.45,
+          "fast_preemptions": 245,
+          "peak_vram_gb": 5.89,
+          "cluster_vram_gb": 23.57,
+          "hard_underruns": 556,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 59.96,
+          "fast_ttac_p99_ms": 82.66,
+          "fast_aoi_p99_ms": 136.25,
+          "slow_aoi_p50_ms": 1790.12,
+          "slow_aoi_p99_ms": 3263.2,
+          "fast_preemptions": 267,
+          "peak_vram_gb": 5.89,
+          "cluster_vram_gb": 23.57,
+          "hard_underruns": 1206,
+          "slo_met": false
+        }
+      ],
+      "baseline_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 2558.72,
+          "fast_ttac_p99_ms": 2943.42,
+          "fast_aoi_p99_ms": 2756.73,
+          "slow_aoi_p50_ms": 2952.71,
+          "slow_aoi_p99_ms": 3049.96,
+          "lock_wait_p99_ms": 2.96,
+          "hard_underruns": 20,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 3485.17,
+          "fast_ttac_p99_ms": 3492.42,
+          "fast_aoi_p99_ms": 0.0,
+          "slow_aoi_p50_ms": 0.0,
+          "slow_aoi_p99_ms": 9999.0,
+          "lock_wait_p99_ms": 0.0,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 3306.92,
+          "fast_ttac_p99_ms": 3318.81,
+          "fast_aoi_p99_ms": 0.0,
+          "slow_aoi_p50_ms": 0.0,
+          "slow_aoi_p99_ms": 9999.0,
+          "lock_wait_p99_ms": 0.0,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 3377.35,
+          "fast_ttac_p99_ms": 3391.21,
+          "fast_aoi_p99_ms": 0.0,
+          "slow_aoi_p50_ms": 0.0,
+          "slow_aoi_p99_ms": 9999.0,
+          "lock_wait_p99_ms": 0.0,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 3362.02,
+          "fast_ttac_p99_ms": 3382.9,
+          "fast_aoi_p99_ms": 0.0,
+          "slow_aoi_p50_ms": 0.0,
+          "slow_aoi_p99_ms": 9999.0,
+          "lock_wait_p99_ms": 0.0,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 3596.76,
+          "fast_ttac_p99_ms": 3612.9,
+          "fast_aoi_p99_ms": 0.0,
+          "slow_aoi_p50_ms": 0.0,
+          "slow_aoi_p99_ms": 9999.0,
+          "lock_wait_p99_ms": 0.0,
+          "hard_underruns": 0,
+          "slo_met": false
+        }
+      ]
+    },
+    "workload2_step_reaction": {
+      "streams": 4,
+      "engine_reaction_ms": 65.38,
+      "baseline_reaction_ms": 1500.0
+    },
+    "workload3_closed_loop": {
+      "streams": 4,
+      "engine_tracking_rmse": 0.1509,
+      "engine_success_rate_pct": 100.0,
+      "engine_p99_step_jump": 0.2461,
+      "engine_max_step_jump": 0.2577,
+      "engine_underruns": 0,
+      "baseline_tracking_rmse": 0.5539,
+      "baseline_success_rate_pct": 0.0,
+      "baseline_p99_step_jump": 0.7383,
+      "baseline_max_step_jump": 0.7383,
+      "baseline_underruns": 108
+    }
+  },
+  "disagg_2s_2f": {
+    "model": "lerobot/pi05_base",
+    "model_params_billions": 2.827,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "num_gpus_used": 4,
+    "topology": "Disaggregated 2S:2F Pre-Push (slow=[0, 1], fast=[2, 3])",
+    "slow_devices": [
+      [
+        0
+      ],
+      [
+        1
+      ]
+    ],
+    "fast_devices": [
+      2,
+      3
+    ],
+    "deadline_ms": 30.0,
+    "stage0_parity": {
+      "bf16_splice_cos_sim": 0.999965,
+      "fp8_chunk_cos_sim": 0.999861,
+      "underruns": 0,
+      "ref_step0_norm": 0.0,
+      "calibration": {
+        "mode": "disaggregated",
+        "slow_devices": [
+          [
+            0
+          ],
+          [
+            1
+          ]
+        ],
+        "fast_devices": [
+          2,
+          3
+        ],
+        "p2p_direct": true,
+        "num_slow_slices": 1,
+        "max_slow_slice_ms": 0.0,
+        "slow_bucket_total_ms": {
+          "1": 12.93
+        },
+        "slow_stage_bucket_ms": [
+          {
+            "1": 12.93
+          }
+        ],
+        "mean_slow_slice_ms": 12.934528350830078,
+        "fast_bucket_ms": {
+          "1": 18.769887924194336
+        },
+        "tsc_pool_pages": 324
+      }
+    },
+    "workload1_traffic": {
+      "tempo_slo_goodput": 0,
+      "tempo_goodput_per_gpu": 0.0,
+      "baseline_slo_goodput": 0,
+      "baseline_goodput_per_gpu": 0.0,
+      "tempo_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 20.38,
+          "fast_ttac_p99_ms": 36.88,
+          "fast_aoi_p99_ms": 111.82,
+          "slow_aoi_p50_ms": 326.43,
+          "slow_aoi_p99_ms": 642.08,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.85,
+          "cluster_vram_gb": 15.69,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 33.83,
+          "fast_ttac_p99_ms": 47.69,
+          "fast_aoi_p99_ms": 116.91,
+          "slow_aoi_p50_ms": 330.5,
+          "slow_aoi_p99_ms": 689.37,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.85,
+          "cluster_vram_gb": 15.69,
+          "hard_underruns": 13,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 43.97,
+          "fast_ttac_p99_ms": 63.46,
+          "fast_aoi_p99_ms": 116.86,
+          "slow_aoi_p50_ms": 352.14,
+          "slow_aoi_p99_ms": 916.83,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.85,
+          "cluster_vram_gb": 15.69,
+          "hard_underruns": 221,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 62.46,
+          "fast_ttac_p99_ms": 81.02,
+          "fast_aoi_p99_ms": 133.87,
+          "slow_aoi_p50_ms": 352.4,
+          "slow_aoi_p99_ms": 1011.0,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.85,
+          "cluster_vram_gb": 15.7,
+          "hard_underruns": 621,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 50.56,
+          "fast_ttac_p99_ms": 91.37,
+          "fast_aoi_p99_ms": 160.75,
+          "slow_aoi_p50_ms": 365.32,
+          "slow_aoi_p99_ms": 1245.23,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.86,
+          "cluster_vram_gb": 15.7,
+          "hard_underruns": 658,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 58.28,
+          "fast_ttac_p99_ms": 91.27,
+          "fast_aoi_p99_ms": 189.74,
+          "slow_aoi_p50_ms": 380.95,
+          "slow_aoi_p99_ms": 1371.0,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 5.86,
+          "cluster_vram_gb": 15.71,
+          "hard_underruns": 656,
+          "slo_met": false
+        }
+      ],
+      "baseline_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 804.81,
+          "fast_ttac_p99_ms": 1431.06,
+          "fast_aoi_p99_ms": 2205.71,
+          "slow_aoi_p50_ms": 2036.85,
+          "slow_aoi_p99_ms": 2678.93,
+          "lock_wait_p99_ms": 2.67,
+          "hard_underruns": 748,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 667.18,
+          "fast_ttac_p99_ms": 1060.22,
+          "fast_aoi_p99_ms": 1656.56,
+          "slow_aoi_p50_ms": 1993.77,
+          "slow_aoi_p99_ms": 2759.83,
+          "lock_wait_p99_ms": 3.16,
+          "hard_underruns": 2117,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 733.17,
+          "fast_ttac_p99_ms": 1338.61,
+          "fast_aoi_p99_ms": 1998.14,
+          "slow_aoi_p50_ms": 2217.03,
+          "slow_aoi_p99_ms": 2949.57,
+          "lock_wait_p99_ms": 2.32,
+          "hard_underruns": 2141,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 682.26,
+          "fast_ttac_p99_ms": 1350.45,
+          "fast_aoi_p99_ms": 1935.0,
+          "slow_aoi_p50_ms": 2547.46,
+          "slow_aoi_p99_ms": 3078.82,
+          "lock_wait_p99_ms": 2.26,
+          "hard_underruns": 2893,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 738.98,
+          "fast_ttac_p99_ms": 1559.4,
+          "fast_aoi_p99_ms": 2225.78,
+          "slow_aoi_p50_ms": 3287.36,
+          "slow_aoi_p99_ms": 3645.99,
+          "lock_wait_p99_ms": 2.63,
+          "hard_underruns": 4027,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 718.5,
+          "fast_ttac_p99_ms": 1608.22,
+          "fast_aoi_p99_ms": 2278.79,
+          "slow_aoi_p50_ms": 2557.55,
+          "slow_aoi_p99_ms": 3404.49,
+          "lock_wait_p99_ms": 2.27,
+          "hard_underruns": 1265,
+          "slo_met": false
+        }
+      ]
+    },
+    "workload2_step_reaction": {
+      "streams": 4,
+      "engine_reaction_ms": 65.43,
+      "baseline_reaction_ms": 1500.0
+    },
+    "workload3_closed_loop": {
+      "streams": 4,
+      "engine_tracking_rmse": 0.17,
+      "engine_success_rate_pct": 100.0,
+      "engine_p99_step_jump": 0.2479,
+      "engine_max_step_jump": 0.2559,
+      "engine_underruns": 0,
+      "baseline_tracking_rmse": 2.4272,
+      "baseline_success_rate_pct": 0.0,
+      "baseline_p99_step_jump": 0.0,
+      "baseline_max_step_jump": 0.75,
+      "baseline_underruns": 3024
+    }
+  },
+  "disagg_1s_3f": {
+    "model": "lerobot/pi05_base",
+    "model_params_billions": 2.827,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "num_gpus_used": 4,
+    "topology": "Disaggregated 1S:3F Pre-Push (slow=[0], fast=[1, 2, 3])",
+    "slow_devices": [
+      [
+        0
+      ]
+    ],
+    "fast_devices": [
+      1,
+      2,
+      3
+    ],
+    "deadline_ms": 30.0,
+    "stage0_parity": {
+      "bf16_splice_cos_sim": 0.99999,
+      "fp8_chunk_cos_sim": 0.999922,
+      "underruns": 0,
+      "ref_step0_norm": 0.0,
+      "calibration": {
+        "mode": "disaggregated",
+        "slow_devices": [
+          [
+            0
+          ]
+        ],
+        "fast_devices": [
+          1,
+          2,
+          3
+        ],
+        "p2p_direct": true,
+        "num_slow_slices": 1,
+        "max_slow_slice_ms": 0.0,
+        "slow_bucket_total_ms": {
+          "1": 13.07,
+          "2": 21.34,
+          "3": 30.76
+        },
+        "slow_stage_bucket_ms": [
+          {
+            "1": 13.07,
+            "2": 21.34,
+            "3": 30.76
+          }
+        ],
+        "mean_slow_slice_ms": 30.756704330444336,
+        "fast_bucket_ms": {
+          "1": 18.80975914001465
+        },
+        "tsc_pool_pages": 486
+      }
+    },
+    "workload1_traffic": {
+      "tempo_slo_goodput": 0,
+      "tempo_goodput_per_gpu": 0.0,
+      "baseline_slo_goodput": 0,
+      "baseline_goodput_per_gpu": 0.0,
+      "tempo_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 20.57,
+          "fast_ttac_p99_ms": 36.83,
+          "fast_aoi_p99_ms": 110.43,
+          "slow_aoi_p50_ms": 328.87,
+          "slow_aoi_p99_ms": 643.67,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 6.42,
+          "cluster_vram_gb": 12.68,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 24.44,
+          "fast_ttac_p99_ms": 40.35,
+          "fast_aoi_p99_ms": 113.84,
+          "slow_aoi_p50_ms": 330.07,
+          "slow_aoi_p99_ms": 687.29,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 6.43,
+          "cluster_vram_gb": 12.68,
+          "hard_underruns": 2,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 33.2,
+          "fast_ttac_p99_ms": 47.54,
+          "fast_aoi_p99_ms": 114.36,
+          "slow_aoi_p50_ms": 346.98,
+          "slow_aoi_p99_ms": 901.32,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 6.43,
+          "cluster_vram_gb": 12.69,
+          "hard_underruns": 21,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 42.47,
+          "fast_ttac_p99_ms": 66.21,
+          "fast_aoi_p99_ms": 117.41,
+          "slow_aoi_p50_ms": 344.21,
+          "slow_aoi_p99_ms": 998.42,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 6.43,
+          "cluster_vram_gb": 12.69,
+          "hard_underruns": 234,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 62.76,
+          "fast_ttac_p99_ms": 81.84,
+          "fast_aoi_p99_ms": 134.04,
+          "slow_aoi_p50_ms": 356.12,
+          "slow_aoi_p99_ms": 1228.51,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 6.44,
+          "cluster_vram_gb": 12.7,
+          "hard_underruns": 929,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 53.54,
+          "fast_ttac_p99_ms": 90.94,
+          "fast_aoi_p99_ms": 153.94,
+          "slow_aoi_p50_ms": 396.48,
+          "slow_aoi_p99_ms": 1386.18,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 6.45,
+          "cluster_vram_gb": 12.7,
+          "hard_underruns": 983,
+          "slo_met": false
+        }
+      ],
+      "baseline_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 1230.92,
+          "fast_ttac_p99_ms": 2320.82,
+          "fast_aoi_p99_ms": 2577.61,
+          "slow_aoi_p50_ms": 2460.79,
+          "slow_aoi_p99_ms": 2698.87,
+          "lock_wait_p99_ms": 3.55,
+          "hard_underruns": 109,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 940.76,
+          "fast_ttac_p99_ms": 2314.49,
+          "fast_aoi_p99_ms": 2585.01,
+          "slow_aoi_p50_ms": 2663.4,
+          "slow_aoi_p99_ms": 2830.39,
+          "lock_wait_p99_ms": 3.71,
+          "hard_underruns": 85,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 969.5,
+          "fast_ttac_p99_ms": 2533.35,
+          "fast_aoi_p99_ms": 2589.91,
+          "slow_aoi_p50_ms": 2933.37,
+          "slow_aoi_p99_ms": 2956.47,
+          "lock_wait_p99_ms": 3.43,
+          "hard_underruns": 13,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 806.48,
+          "fast_ttac_p99_ms": 2545.85,
+          "fast_aoi_p99_ms": 2595.28,
+          "slow_aoi_p50_ms": 3030.55,
+          "slow_aoi_p99_ms": 3083.77,
+          "lock_wait_p99_ms": 1.44,
+          "hard_underruns": 33,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 995.71,
+          "fast_ttac_p99_ms": 2441.44,
+          "fast_aoi_p99_ms": 2588.98,
+          "slow_aoi_p50_ms": 3249.59,
+          "slow_aoi_p99_ms": 3321.64,
+          "lock_wait_p99_ms": 4.06,
+          "hard_underruns": 25,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 1005.88,
+          "fast_ttac_p99_ms": 2647.13,
+          "fast_aoi_p99_ms": 2595.27,
+          "slow_aoi_p50_ms": 3208.31,
+          "slow_aoi_p99_ms": 3411.1,
+          "lock_wait_p99_ms": 5.98,
+          "hard_underruns": 45,
+          "slo_met": false
+        }
+      ]
+    },
+    "workload2_step_reaction": {
+      "streams": 4,
+      "engine_reaction_ms": 66.56,
+      "baseline_reaction_ms": 1500.0
+    },
+    "workload3_closed_loop": {
+      "streams": 4,
+      "engine_tracking_rmse": 0.1629,
+      "engine_success_rate_pct": 100.0,
+      "engine_p99_step_jump": 0.2495,
+      "engine_max_step_jump": 0.2652,
+      "engine_underruns": 0,
+      "baseline_tracking_rmse": 1.1065,
+      "baseline_success_rate_pct": 0.0,
+      "baseline_p99_step_jump": 0.75,
+      "baseline_max_step_jump": 0.75,
+      "baseline_underruns": 545
+    }
+  },
+  "disagg_pp2s_2f": {
+    "model": "lerobot/pi05_base",
+    "model_params_billions": 2.827,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "num_gpus_used": 4,
+    "topology": "Disaggregated 1xPP(2)S:2F Pipeline Pre-Push (slow=[[0, 1]], fast=[2, 3])",
+    "slow_devices": [
+      [
+        0,
+        1
+      ]
+    ],
+    "fast_devices": [
+      2,
+      3
+    ],
+    "deadline_ms": 30.0,
+    "stage0_parity": {
+      "bf16_splice_cos_sim": 0.999934,
+      "fp8_chunk_cos_sim": 0.999888,
+      "underruns": 0,
+      "ref_step0_norm": 0.0,
+      "calibration": {
+        "mode": "disaggregated",
+        "slow_devices": [
+          [
+            0,
+            1
+          ]
+        ],
+        "fast_devices": [
+          2,
+          3
+        ],
+        "p2p_direct": true,
+        "num_slow_slices": 2,
+        "max_slow_slice_ms": 0.0,
+        "slow_bucket_total_ms": {
+          "1": 12.91,
+          "2": 21.04
+        },
+        "slow_stage_bucket_ms": [
+          {
+            "1": 7.86,
+            "2": 12.71
+          },
+          {
+            "1": 5.04,
+            "2": 8.33
+          }
+        ],
+        "mean_slow_slice_ms": 10.519408226013184,
+        "fast_bucket_ms": {
+          "1": 18.799776077270508
+        },
+        "tsc_pool_pages": 324
+      }
+    },
+    "workload1_traffic": {
+      "tempo_slo_goodput": 0,
+      "tempo_goodput_per_gpu": 0.0,
+      "baseline_slo_goodput": 0,
+      "baseline_goodput_per_gpu": 0.0,
+      "tempo_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 20.4,
+          "fast_ttac_p99_ms": 36.4,
+          "fast_aoi_p99_ms": 110.41,
+          "slow_aoi_p50_ms": 326.77,
+          "slow_aoi_p99_ms": 643.34,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 4.33,
+          "cluster_vram_gb": 12.95,
+          "hard_underruns": 0,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 32.98,
+          "fast_ttac_p99_ms": 47.64,
+          "fast_aoi_p99_ms": 114.01,
+          "slow_aoi_p50_ms": 333.15,
+          "slow_aoi_p99_ms": 694.04,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 4.34,
+          "cluster_vram_gb": 12.95,
+          "hard_underruns": 8,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 43.72,
+          "fast_ttac_p99_ms": 62.03,
+          "fast_aoi_p99_ms": 118.9,
+          "slow_aoi_p50_ms": 357.0,
+          "slow_aoi_p99_ms": 906.43,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 4.34,
+          "cluster_vram_gb": 12.95,
+          "hard_underruns": 209,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 62.84,
+          "fast_ttac_p99_ms": 82.29,
+          "fast_aoi_p99_ms": 134.81,
+          "slow_aoi_p50_ms": 356.29,
+          "slow_aoi_p99_ms": 1010.76,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 4.34,
+          "cluster_vram_gb": 12.96,
+          "hard_underruns": 619,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 50.06,
+          "fast_ttac_p99_ms": 91.03,
+          "fast_aoi_p99_ms": 160.29,
+          "slow_aoi_p50_ms": 364.93,
+          "slow_aoi_p99_ms": 1252.32,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 4.35,
+          "cluster_vram_gb": 12.97,
+          "hard_underruns": 660,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 58.76,
+          "fast_ttac_p99_ms": 91.21,
+          "fast_aoi_p99_ms": 188.8,
+          "slow_aoi_p50_ms": 396.6,
+          "slow_aoi_p99_ms": 1395.63,
+          "fast_preemptions": 0,
+          "peak_vram_gb": 4.36,
+          "cluster_vram_gb": 12.97,
+          "hard_underruns": 659,
+          "slo_met": false
+        }
+      ],
+      "baseline_sweep": [
+        {
+          "streams": 4,
+          "fast_ttac_p50_ms": 639.05,
+          "fast_ttac_p99_ms": 804.34,
+          "fast_aoi_p99_ms": 1463.19,
+          "slow_aoi_p50_ms": 1871.13,
+          "slow_aoi_p99_ms": 2677.43,
+          "lock_wait_p99_ms": 2.76,
+          "hard_underruns": 1833,
+          "slo_met": false
+        },
+        {
+          "streams": 8,
+          "fast_ttac_p50_ms": 727.96,
+          "fast_ttac_p99_ms": 1041.93,
+          "fast_aoi_p99_ms": 1685.26,
+          "slow_aoi_p50_ms": 2193.64,
+          "slow_aoi_p99_ms": 2805.4,
+          "lock_wait_p99_ms": 2.77,
+          "hard_underruns": 1915,
+          "slo_met": false
+        },
+        {
+          "streams": 12,
+          "fast_ttac_p50_ms": 718.81,
+          "fast_ttac_p99_ms": 1076.71,
+          "fast_aoi_p99_ms": 1702.0,
+          "slow_aoi_p50_ms": 2415.8,
+          "slow_aoi_p99_ms": 2944.45,
+          "lock_wait_p99_ms": 2.92,
+          "hard_underruns": 2722,
+          "slo_met": false
+        },
+        {
+          "streams": 16,
+          "fast_ttac_p50_ms": 698.85,
+          "fast_ttac_p99_ms": 1042.87,
+          "fast_aoi_p99_ms": 1652.53,
+          "slow_aoi_p50_ms": 2468.59,
+          "slow_aoi_p99_ms": 3071.18,
+          "lock_wait_p99_ms": 3.04,
+          "hard_underruns": 3272,
+          "slo_met": false
+        },
+        {
+          "streams": 24,
+          "fast_ttac_p50_ms": 897.7,
+          "fast_ttac_p99_ms": 1148.25,
+          "fast_aoi_p99_ms": 1883.69,
+          "slow_aoi_p50_ms": 3009.7,
+          "slow_aoi_p99_ms": 3322.55,
+          "lock_wait_p99_ms": 2.17,
+          "hard_underruns": 3803,
+          "slo_met": false
+        },
+        {
+          "streams": 32,
+          "fast_ttac_p50_ms": 663.13,
+          "fast_ttac_p99_ms": 1521.47,
+          "fast_aoi_p99_ms": 2120.81,
+          "slow_aoi_p50_ms": 2702.93,
+          "slow_aoi_p99_ms": 3403.69,
+          "lock_wait_p99_ms": 2.42,
+          "hard_underruns": 2995,
+          "slo_met": false
+        }
+      ]
+    },
+    "workload2_step_reaction": {
+      "streams": 4,
+      "engine_reaction_ms": 64.92,
+      "baseline_reaction_ms": 1500.0
+    },
+    "workload3_closed_loop": {
+      "streams": 4,
+      "engine_tracking_rmse": 0.158,
+      "engine_success_rate_pct": 100.0,
+      "engine_p99_step_jump": 0.246,
+      "engine_max_step_jump": 0.2626,
+      "engine_underruns": 0,
+      "baseline_tracking_rmse": 2.6786,
+      "baseline_success_rate_pct": 0.0,
+      "baseline_p99_step_jump": 0.0,
+      "baseline_max_step_jump": 0.75,
+      "baseline_underruns": 3739
+    }
+  },
+  "nvidia_smi_topo": "\u001b[4mGPU0\tGPU1\tGPU2\tGPU3\tNIC0\tNIC1\tNIC2\tNIC3\tNIC4\tNIC5\tNIC6\tNIC7\tNIC8\tNIC9\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\u001b[0m\nGPU0\t X \tNV18\tNV18\tNV18\tPXB\tPXB\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t0-63,128-191\t0\t\tN/A\nGPU1\tNV18\t X \tNV18\tNV18\tNODE\tNODE\tPXB\tPXB\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t0-63,128-191\t0\t\tN/A\nGPU2\tNV18\tNV18\t X \tNV18\tSYS\tSYS\tSYS\tSYS\tPXB\tPXB\tNODE\tNODE\tSYS\tSYS\t64-127,192-255\t1\t\tN/A\nGPU3\tNV18\tNV18\tNV18\t X \tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\tPXB\tPXB\tSYS\tSYS\t64-127,192-255\t1\t\tN/A\nNIC0\tPXB\tNODE\tSYS\tSYS\t X \tPXB\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t\t\t\t\nNIC1\tPXB\tNODE\tSYS\tSYS\tPXB\t X \tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t\t\t\t\nNIC2\tNODE\tPXB\tSYS\tSYS\tNODE\tNODE\t X \tPXB\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t\t\t\t\nNIC3\tNODE\tPXB\tSYS\tSYS\tNODE\tNODE\tPXB\t X \tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t\t\t\t\nNIC4\tSYS\tSYS\tPXB\tNODE\tSYS\tSYS\tSYS\tSYS\t X \tPXB\tNODE\tNODE\tSYS\tSYS\t\t\t\t\nNIC5\tSYS\tSYS\tPXB\tNODE\tSYS\tSYS\tSYS\tSYS\tPXB\t X \tNODE\tNODE\tSYS\tSYS\t\t\t\t\nNIC6\tSYS\tSYS\tNODE\tPXB\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t X \tPXB\tSYS\tSYS\t\t\t\t\nNIC7\tSYS\tSYS\tNODE\tPXB\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\tPXB\t X \tSYS\tSYS\t\t\t\t\nNIC8\tNODE\tNODE\tSYS\tSYS\tNODE\tNODE\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\t X \tPIX\t\t\t\t\nNIC9\tNODE\tNODE\tSYS\tSYS\tNODE\tNODE\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tPIX\t X \t\t\t\t\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n\nNIC Legend:\n\n  NIC0: ibp11s0\n  NIC1: ibp14s0\n  NIC2: ibp107s0\n  NIC3: ibp110s0\n  NIC4: ibp139s0\n  NIC5: ibp142s0\n  NIC6: ibp235s0\n  NIC7: ibp238s0\n  NIC8: rocep33s0f0\n  NIC9: rocep33s0f1",
+  "runpod_gpu_spec": "4x NVIDIA H100 80GB HBM3 (SECURE)"
+}

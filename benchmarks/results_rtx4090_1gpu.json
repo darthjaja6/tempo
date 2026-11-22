@@ -1,0 +1,176 @@
+{
+  "model": "lerobot/pi05_base",
+  "model_params_billions": 2.827,
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "num_gpus_used": 1,
+  "topology": "1-GPU Colocated Micro-Sliced",
+  "slow_devices": [
+    [
+      0
+    ]
+  ],
+  "fast_devices": [
+    0
+  ],
+  "deadline_ms": 35.0,
+  "stage0_parity": {
+    "bf16_splice_cos_sim": 0.998492,
+    "fp8_chunk_cos_sim": 0.99926,
+    "underruns": 0,
+    "ref_step0_norm": 0.0,
+    "calibration": {
+      "mode": "colocated",
+      "slow_devices": [
+        [
+          0
+        ]
+      ],
+      "fast_devices": [
+        0
+      ],
+      "p2p_direct": false,
+      "num_slow_slices": 45,
+      "max_slow_slice_ms": 1.6455680131912231,
+      "slow_bucket_total_ms": {
+        "1": 36.49,
+        "2": 66.57
+      },
+      "slow_stage_bucket_ms": [
+        {
+          "1": 36.49,
+          "2": 66.57
+        }
+      ],
+      "mean_slow_slice_ms": 1.4793678323427837,
+      "fast_bucket_ms": {
+        "1": 24.02057647705078,
+        "2": 27.815935134887695
+      },
+      "tsc_pool_pages": 324
+    }
+  },
+  "workload1_traffic": {
+    "tempo_slo_goodput": 1,
+    "tempo_goodput_per_gpu": 1.0,
+    "baseline_slo_goodput": 0,
+    "baseline_goodput_per_gpu": 0.0,
+    "tempo_sweep": [
+      {
+        "streams": 1,
+        "fast_ttac_p50_ms": 22.49,
+        "fast_ttac_p99_ms": 23.9,
+        "fast_aoi_p99_ms": 115.55,
+        "slow_aoi_p50_ms": 360.32,
+        "slow_aoi_p99_ms": 659.08,
+        "fast_preemptions": 10,
+        "peak_vram_gb": 5.49,
+        "cluster_vram_gb": 5.49,
+        "hard_underruns": 0,
+        "slo_met": true
+      },
+      {
+        "streams": 2,
+        "fast_ttac_p50_ms": 32.75,
+        "fast_ttac_p99_ms": 44.3,
+        "fast_aoi_p99_ms": 105.88,
+        "slow_aoi_p50_ms": 512.84,
+        "slow_aoi_p99_ms": 1026.12,
+        "fast_preemptions": 69,
+        "peak_vram_gb": 5.55,
+        "cluster_vram_gb": 5.55,
+        "hard_underruns": 0,
+        "slo_met": false
+      },
+      {
+        "streams": 4,
+        "fast_ttac_p50_ms": 53.4,
+        "fast_ttac_p99_ms": 79.03,
+        "fast_aoi_p99_ms": 124.5,
+        "slow_aoi_p50_ms": 1951.88,
+        "slow_aoi_p99_ms": 3666.1,
+        "fast_preemptions": 61,
+        "peak_vram_gb": 5.66,
+        "cluster_vram_gb": 5.66,
+        "hard_underruns": 191,
+        "slo_met": false
+      },
+      {
+        "streams": 8,
+        "fast_ttac_p50_ms": 65.46,
+        "fast_ttac_p99_ms": 91.87,
+        "fast_aoi_p99_ms": 164.44,
+        "slow_aoi_p50_ms": 2096.92,
+        "slow_aoi_p99_ms": 3786.07,
+        "fast_preemptions": 58,
+        "peak_vram_gb": 5.8,
+        "cluster_vram_gb": 5.8,
+        "hard_underruns": 331,
+        "slo_met": false
+      }
+    ],
+    "baseline_sweep": [
+      {
+        "streams": 1,
+        "fast_ttac_p50_ms": 146.99,
+        "fast_ttac_p99_ms": 271.6,
+        "fast_aoi_p99_ms": 361.91,
+        "slow_aoi_p50_ms": 492.42,
+        "slow_aoi_p99_ms": 799.49,
+        "lock_wait_p99_ms": 0.41,
+        "hard_underruns": 1375,
+        "slo_met": false
+      },
+      {
+        "streams": 2,
+        "fast_ttac_p50_ms": 148.51,
+        "fast_ttac_p99_ms": 181.59,
+        "fast_aoi_p99_ms": 290.87,
+        "slow_aoi_p50_ms": 491.16,
+        "slow_aoi_p99_ms": 752.31,
+        "lock_wait_p99_ms": 0.21,
+        "hard_underruns": 2952,
+        "slo_met": false
+      },
+      {
+        "streams": 4,
+        "fast_ttac_p50_ms": 153.6,
+        "fast_ttac_p99_ms": 214.42,
+        "fast_aoi_p99_ms": 326.52,
+        "slow_aoi_p50_ms": 848.35,
+        "slow_aoi_p99_ms": 1272.95,
+        "lock_wait_p99_ms": 0.19,
+        "hard_underruns": 6035,
+        "slo_met": false
+      },
+      {
+        "streams": 8,
+        "fast_ttac_p50_ms": 153.65,
+        "fast_ttac_p99_ms": 238.2,
+        "fast_aoi_p99_ms": 349.93,
+        "slow_aoi_p50_ms": 1184.27,
+        "slow_aoi_p99_ms": 2009.29,
+        "lock_wait_p99_ms": 0.79,
+        "hard_underruns": 12744,
+        "slo_met": false
+      }
+    ]
+  },
+  "workload2_step_reaction": {
+    "streams": 1,
+    "engine_reaction_ms": 169.82,
+    "baseline_reaction_ms": 1500.0
+  },
+  "workload3_closed_loop": {
+    "streams": 1,
+    "engine_tracking_rmse": 0.4329,
+    "engine_success_rate_pct": 0.0,
+    "engine_p99_step_jump": 0.2129,
+    "engine_max_step_jump": 0.2558,
+    "engine_underruns": 0,
+    "baseline_tracking_rmse": 3.3614,
+    "baseline_success_rate_pct": 0.0,
+    "baseline_p99_step_jump": 0.0,
+    "baseline_max_step_jump": 0.1973,
+    "baseline_underruns": 1994
+  }
+}
