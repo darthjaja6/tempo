@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tempo"
 version = "0.1.0"
-description = "Fast, deadline-aware C++/CUDA serving engine for dual-system (System 2 + System 1) robot policies"
+description = "Fast serving engine for System 1 + System 2 robot policies"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"

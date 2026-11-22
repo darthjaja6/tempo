@@ -674,7 +674,7 @@ class StageSpec:
 
 
 class Engine:
-    """Real-time C++/CUDA serving engine for dual-system (System 2 + System 1) robot policies."""
+    """Fast serving engine for System 1 + System 2 robot policies."""
 
     TemporalChannel = TemporalChannel
 

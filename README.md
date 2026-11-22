@@ -1,7 +1,7 @@
 <h1 align="center">Tempo</h1>
 
 <h3 align="center">
-Fast, deadline-aware serving for dual-system robot policies
+Fast serving engine for System 1 + System 2 robot policies
 </h3>
 
 <p align="center">
@@ -10,7 +10,7 @@ Fast, deadline-aware serving for dual-system robot policies
 
 ---
 
-**Tempo** is a C++/CUDA inference and serving engine for dual-system (`System 2 + System 1`) embodied foundation models—such as $\pi_{0.5}$, GR00T-N1.5, SmolVLA, and Helix—where a `1–10 Hz` Vision-Language Model (`SlowBackbone`) conditions a `10–30 Hz` reactive action head (`FastHead`) driving `100–1000 Hz` continuous robot control. It pairs a zero-GIL C++/CUDA runtime with a clean PyTorch `nn.Module` interface to guarantee hard control deadlines across single-GPU, multi-GPU, and edge-cloud deployments.
+**Tempo** is a fast inference and serving engine for `System 1 + System 2` robot policies—such as $\pi_{0.5}$, GR00T-N1.5, SmolVLA, and Helix—where a `1–10 Hz` Vision-Language Model (`SlowBackbone`) conditions a `10–30 Hz` reactive action head (`FastHead`) driving `100–1000 Hz` continuous robot control. It pairs a zero-GIL runtime with a clean PyTorch `nn.Module` interface for low-latency serving across single-GPU, multi-GPU, and edge-cloud deployments.
 
 <p align="center">
   <img src="./architecture.svg" width="100%" alt="Tempo Architecture">

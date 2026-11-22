@@ -1,4 +1,4 @@
-"""Tempo: Fast, deadline-aware serving for dual-system robot policies."""
+"""Tempo: Fast serving engine for System 1 + System 2 robot policies."""
 
 from .channel import (
     Engine,
