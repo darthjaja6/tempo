@@ -1,4 +1,4 @@
-"""Single-GPU quickstart: pretrained Hugging Face serving, modular (Slow x Fast) pairing, and custom @stage."""
+"""Single-GPU quickstart: pretrained checkpoints, modular (Slow x Fast) pairing, and custom @stage."""
 
 import argparse
 import pathlib
@@ -22,7 +22,7 @@ from tempo import (
 
 
 def run_pretrained_demo(model_id: str) -> None:
-    """Zero-ceremony SGLang/vLLM-style serving from a Hugging Face checkpoint."""
+    """Serve a pretrained Hugging Face checkpoint."""
     with Engine(model_id, num_streams=4, prompt="pick up the cup") as engine:
         cams = torch.randint(0, 256, (4, *engine.slow_obs_shape), dtype=torch.uint8)
         fast_in = torch.randn((4, *engine.fast_obs_shape), dtype=torch.bfloat16)

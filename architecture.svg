@@ -20,7 +20,7 @@
   <rect width="1320" height="552" rx="10" fill="#ffffff"/>
 
   <!-- Header -->
-  <text x="660" y="29" font-size="18.5" font-weight="700" fill="#0f172a" text-anchor="middle" letter-spacing="-0.2">Dual-System Embodied Inference Engine Architecture</text>
+  <text x="660" y="29" font-size="18.5" font-weight="700" fill="#0f172a" text-anchor="middle" letter-spacing="-0.2">Tempo System 1 + System 2 Serving Architecture</text>
 
   <!-- ==================== COLUMN 1: ROBOT STREAMS ==================== -->
   <rect x="18" y="48" width="212" height="432" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" filter="url(#card-shadow)"/>
@@ -41,9 +41,9 @@
   <rect x="44" y="402" width="160" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
   <text x="124" y="423" font-size="11.5" font-weight="600" fill="#334155" text-anchor="middle">Latest-Only Overwrite</text>
 
-  <!-- ==================== COLUMN 2: ZERO-GIL C++ SCHEDULER ==================== -->
+  <!-- ==================== COLUMN 2: C++ SCHEDULER ==================== -->
   <rect x="272" y="48" width="234" height="432" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" filter="url(#card-shadow)"/>
-  <text x="389" y="74" font-size="14" font-weight="700" fill="#1e293b" text-anchor="middle">2. Zero-GIL C++ Scheduler</text>
+  <text x="389" y="74" font-size="14" font-weight="700" fill="#1e293b" text-anchor="middle">2. C++ Scheduler</text>
   <line x1="288" y1="86" x2="490" y2="86" stroke="#e2e8f0" stroke-width="1"/>
 
   <!-- AoI Priority Queue -->
@@ -63,34 +63,34 @@
   <text x="389" y="396" font-size="11.5" fill="#047857" text-anchor="middle">Selects Max Feasible Bucket</text>
   <text x="389" y="416" font-size="11.5" font-weight="600" fill="#059669" text-anchor="middle">B ∈ {1..64} within deadline_ms</text>
 
-  <!-- ==================== COLUMN 3: GPU EXECUTION & TSC ==================== -->
+  <!-- ==================== COLUMN 3: GPU EXECUTION & CACHE ==================== -->
   <rect x="554" y="48" width="462" height="432" rx="12" fill="#f8fafc" stroke="#64748b" stroke-width="1.7" filter="url(#card-shadow)"/>
-  <text x="785" y="74" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">3. GPU Execution &amp; Temporal State Cache (TSC)</text>
+  <text x="785" y="74" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">3. GPU Execution &amp; Shared State Cache</text>
   <line x1="572" y1="86" x2="998" y2="86" stroke="#cbd5e1" stroke-width="1"/>
 
   <!-- System 2 Slow Executor -->
   <rect x="570" y="100" width="430" height="98" rx="9" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
-  <text x="785" y="123" font-size="13.5" font-weight="700" fill="#1e3a8a" text-anchor="middle">System 2 — Slow VLM Executor</text>
+  <text x="785" y="123" font-size="13.5" font-weight="700" fill="#1e3a8a" text-anchor="middle">System 2 — Slow VLM Backbone</text>
   <rect x="584" y="135" width="195" height="50" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
-  <text x="681.5" y="156" font-size="12" font-weight="700" fill="#1e40af" text-anchor="middle">Colocated Micro-Slicing</text>
+  <text x="681.5" y="156" font-size="12" font-weight="700" fill="#1e40af" text-anchor="middle">Colocated Slicing</text>
   <text x="681.5" y="174" font-size="11" fill="#2563eb" text-anchor="middle">Piecewise ≤ 2.0 ms CUDA Graphs</text>
   <rect x="791" y="135" width="195" height="50" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
-  <text x="888.5" y="156" font-size="12" font-weight="700" fill="#1e40af" text-anchor="middle">Disaggregated xS / PP</text>
-  <text x="888.5" y="174" font-size="11" fill="#2563eb" text-anchor="middle">DP Replicas &amp; Pipeline Stages</text>
+  <text x="888.5" y="156" font-size="12" font-weight="700" fill="#1e40af" text-anchor="middle">Disaggregated &amp; Pipeline</text>
+  <text x="888.5" y="174" font-size="11" fill="#2563eb" text-anchor="middle">Data &amp; Pipeline Parallelism</text>
 
-  <!-- Temporal State Cache (TSC) -->
+  <!-- Shared KV & Latent Cache -->
   <rect x="570" y="232" width="430" height="104" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
-  <text x="785" y="256" font-size="13.5" font-weight="700" fill="#92400e" text-anchor="middle">Temporal State Cache (TSC)</text>
+  <text x="785" y="256" font-size="13.5" font-weight="700" fill="#92400e" text-anchor="middle">Shared KV &amp; Latent Cache</text>
   <rect x="584" y="268" width="195" height="54" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.3"/>
-  <text x="681.5" y="290" font-size="12" font-weight="700" fill="#92400e" text-anchor="middle">Lock-Free (M+2) RCU Slots</text>
+  <text x="681.5" y="290" font-size="12" font-weight="700" fill="#92400e" text-anchor="middle">Lock-Free RCU Slots</text>
   <text x="681.5" y="309" font-size="11" fill="#78350f" text-anchor="middle">Atomic Ptr + Reader Bitmap</text>
   <rect x="791" y="268" width="195" height="54" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.3"/>
-  <text x="888.5" y="290" font-size="12" font-weight="700" fill="#92400e" text-anchor="middle">Co-Pooled Paged Memory</text>
+  <text x="888.5" y="290" font-size="12" font-weight="700" fill="#92400e" text-anchor="middle">Paged Memory Pool</text>
   <text x="888.5" y="309" font-size="11" fill="#78350f" text-anchor="middle">KV / Hidden + 3D Rel-Time RoPE</text>
 
   <!-- System 1 Fast Executor -->
   <rect x="570" y="370" width="430" height="96" rx="9" fill="#d1fae5" stroke="#059669" stroke-width="1.6"/>
-  <text x="785" y="393" font-size="13.5" font-weight="700" fill="#065f46" text-anchor="middle">System 1 — Fast Action Expert (yF Shards)</text>
+  <text x="785" y="393" font-size="13.5" font-weight="700" fill="#065f46" text-anchor="middle">System 1 — Fast Action Head</text>
   <rect x="584" y="404" width="195" height="49" rx="6" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
   <text x="681.5" y="424" font-size="12" font-weight="700" fill="#065f46" text-anchor="middle">Paged Cross-Attention</text>
   <text x="681.5" y="442" font-size="11" fill="#047857" text-anchor="middle">100% Local HBM Bandwidth</text>
@@ -166,7 +166,7 @@
   <text x="96" y="520" font-size="12" fill="#334155">Observation &amp; Action Tensors</text>
 
   <line x1="332" y1="516" x2="372" y2="516" stroke="#b45309" stroke-width="2.1" marker-end="url(#arrow-tsc)"/>
-  <text x="382" y="520" font-size="12" fill="#334155">Lock-Free TSC Write / P2P Pre-Push / Read</text>
+  <text x="382" y="520" font-size="12" fill="#334155">Lock-Free Cache Write &amp; Read</text>
 
   <line x1="696" y1="516" x2="736" y2="516" stroke="#e11d48" stroke-width="1.9" stroke-dasharray="5,4" marker-end="url(#arrow-ctrl)"/>
   <text x="746" y="520" font-size="12" fill="#334155">Colocated ≤ 2 ms Slice Preemption</text>

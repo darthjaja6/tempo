@@ -1,4 +1,4 @@
-"""Multi-GPU topologies (Colocated / xSyF Disaggregated / Slow Pipeline Parallelism) & Edge-Cloud TCP bridge."""
+"""Multi-GPU serving (colocated, disaggregated, pipeline-parallel) and edge-cloud split serving."""
 
 import argparse
 import pathlib

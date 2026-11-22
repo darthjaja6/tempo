@@ -1,12 +1,5 @@
 """
-Decoupled Echo-Timestamp network transport for cross-machine Dual-System execution
-(Edge/Cloud VLM Server <-> On-Device Robot Fast Engine).
-
-Keeps the C++/CUDA scheduler 100% network-agnostic:
-- Robot stamps its own monotonic clock `t_obs_ns = engine.now_ns()` on sensor capture.
-- Server batches observations by AoI and echoes `t_obs_ns` untouched alongside the BF16 latent state.
-- Robot injects arriving states via `engine.publish_remote_hidden(stream_id, hidden, echoed_t_obs_ns)`,
-  giving exact clock-skew-free staleness `delta_t_sec` and zero-blocking lock-free `(M+2)` updates.
+TCP transport for edge-cloud System 1 + System 2 serving (remote Slow VLM server + on-device Fast engine).
 """
 
 from __future__ import annotations
