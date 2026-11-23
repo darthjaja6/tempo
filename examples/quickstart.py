@@ -21,6 +21,16 @@ from tempo import (
 )
 
 
+def _wait_until_ready(engine: Engine, fast_in: torch.Tensor) -> None:
+    while True:
+        engine.push_fast_batch(fast_in)
+        time.sleep(0.010)
+        _, fast_age_ms, _, _ = engine.sample_actions(cpu=True)
+        if bool((fast_age_ms >= 0).all()):
+            engine.reset_stats()
+            return
+
+
 def run_pretrained_demo(model_id: str) -> None:
     """Serve a pretrained Hugging Face checkpoint."""
     with Engine(model_id, num_streams=4, prompt="pick up the cup") as engine:
@@ -28,25 +38,22 @@ def run_pretrained_demo(model_id: str) -> None:
         fast_in = torch.randn((4, *engine.fast_obs_shape), dtype=torch.bfloat16)
 
         engine.push_slow_batch(cams)
-        while len(engine.telemetry().slow_latency_ms) < engine.num_streams:
-            time.sleep(0.005)
-        engine.push_fast_batch(fast_in)
-        while engine.telemetry().fast_requests_served < engine.num_streams:
-            time.sleep(0.002)
-        engine.reset_stats()
+        _wait_until_ready(engine, fast_in)
 
         t0 = time.monotonic()
         next_fast = t0
+        total_underruns = 0
         while time.monotonic() - t0 < 0.18:
             now = time.monotonic()
             if now >= next_fast:
                 engine.push_fast_batch(fast_in)
                 next_fast += 0.050
-            actions, fast_aoi_ms, slow_aoi_ms, underruns = engine.sample_actions(cpu=True)
+            actions, fast_age_ms, slow_age_ms, tick_underruns = engine.sample_actions(cpu=True)
+            total_underruns += int(tick_underruns)
             time.sleep(0.002)
 
-    ready = int(((fast_aoi_ms >= 0) & (slow_aoi_ms >= 0)).sum())
-    print(f"[pretrained:{model_id}] actions={tuple(actions.shape)} | ready={ready}/4 | underruns={underruns}")
+    ready = int(((fast_age_ms >= 0) & (slow_age_ms >= 0)).sum())
+    print(f"[pretrained:{model_id}] actions={tuple(actions.shape)} | ready={ready}/4 | underruns={total_underruns}")
 
 
 def run_modular_pairing_demo() -> None:
@@ -71,26 +78,24 @@ def run_modular_pairing_demo() -> None:
     prompt_embeds = torch.randn((cfg.prompt_len, cfg.vlm_width), dtype=torch.bfloat16) * 0.02
 
     with Engine(slow=slow, fast=fast, num_streams=4, prompt=prompt_embeds) as engine:
+        fast_in = torch.randn(4, *engine.fast_obs_shape)
         engine.push_slow_batch(torch.randint(0, 256, (4, *engine.slow_obs_shape), dtype=torch.uint8))
-        while len(engine.telemetry().slow_latency_ms) < engine.num_streams:
-            time.sleep(0.002)
-        engine.push_fast_batch(torch.randn(4, *engine.fast_obs_shape))
-        while engine.telemetry().fast_requests_served < engine.num_streams:
-            time.sleep(0.002)
-        engine.reset_stats()
+        _wait_until_ready(engine, fast_in)
 
         t0 = time.monotonic()
         last_fast = -1.0
+        total_underruns = 0
         while time.monotonic() - t0 < 0.12:
             now = time.monotonic() - t0
             if now - last_fast >= 0.050:
                 engine.push_fast_batch(torch.randn(4, *engine.fast_obs_shape))
                 last_fast = now
-            actions, fast_aoi_ms, slow_aoi_ms, underruns = engine.sample_actions(cpu=True)
+            actions, fast_age_ms, slow_age_ms, tick_underruns = engine.sample_actions(cpu=True)
+            total_underruns += int(tick_underruns)
             time.sleep(0.002)
 
-    ready = int(((fast_aoi_ms >= 0) & (slow_aoi_ms >= 0)).sum())
-    print(f"[modular] actions={tuple(actions.shape)} | ready={ready}/4 | underruns={underruns}")
+    ready = int(((fast_age_ms >= 0) & (slow_age_ms >= 0)).sum())
+    print(f"[modular] actions={tuple(actions.shape)} | ready={ready}/4 | underruns={total_underruns}")
 
 
 def run_custom_stage_demo() -> None:
@@ -120,18 +125,21 @@ def run_custom_stage_demo() -> None:
 
     with engine:
         engine.push_slow_batch(torch.randn(4, 50, 256))
+        _wait_until_ready(engine, torch.randn(4, 32))
         t0 = time.monotonic()
         last_fast = -1.0
+        total_underruns = 0
         while time.monotonic() - t0 < 0.12:
             now = time.monotonic() - t0
             if now - last_fast >= 0.050:
                 engine.push_fast_batch(torch.randn(4, 32))
                 last_fast = now
-            actions, fast_aoi_ms, slow_aoi_ms, underruns = engine.sample_actions(cpu=True)
+            actions, fast_age_ms, slow_age_ms, tick_underruns = engine.sample_actions(cpu=True)
+            total_underruns += int(tick_underruns)
             time.sleep(0.002)
 
-    ready = int(((fast_aoi_ms >= 0) & (slow_aoi_ms >= 0)).sum())
-    print(f"[custom @stage] actions={tuple(actions.shape)} | ready={ready}/4 | underruns={underruns}")
+    ready = int(((fast_age_ms >= 0) & (slow_age_ms >= 0)).sum())
+    print(f"[custom @stage] actions={tuple(actions.shape)} | ready={ready}/4 | underruns={total_underruns}")
 
 
 if __name__ == "__main__":

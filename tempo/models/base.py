@@ -170,6 +170,7 @@ class ModelRegistry:
 
     @classmethod
     def register(cls, *names: str) -> Callable[[BuilderFn], BuilderFn]:
+        """Registers a builder ``fn(config, checkpoint_dir, *, slow_devices, fast_devices, fast_precision, prompt, **kwargs) -> DualSystemDeployment``."""
         if not names:
             raise ValueError("ModelRegistry.register requires at least one architecture name")
 

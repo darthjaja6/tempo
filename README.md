@@ -19,7 +19,7 @@ Fast serving engine for System 1 + System 2 robot policies
 ### Key Features
 
 - **Lock-free paged KV and latent cache** shared between asynchronous Slow (System 2) and Fast (System 1) streams
-- **3D relative-time RoPE** and Split-K cross-attention for asynchronous sensor timestamps
+- **Paged Split-K cross-attention** with optional 3D relative-time RoPE for asynchronous sensor timestamps
 - **C++ scheduler** with deadline batching and latest-frame sensor coalescing
 - **Piecewise CUDA Graph slicing** (`<= 2 ms`) so Slow VLM prefill does not stall Fast action generation on a single GPU
 - **Automatic `torch.compile`, bucketed CUDA Graphs, and `FP8`** on standard PyTorch `nn.Module` policies
@@ -39,7 +39,7 @@ pip install -e . --no-build-isolation
 <summary><b>Container &amp; Build Notes</b></summary>
 
 - **Ubuntu 24.04 / PEP 668 containers**: `python3 -m venv --system-site-packages .venv && source .venv/bin/activate` before installing.
-- **Headless Docker builds (no GPU attached)**: Export `TORCH_CUDA_ARCH_LIST="8.9;9.0;12.0"` before `pip install`.
+- **Headless Docker builds (no GPU attached)**: Export `TORCH_CUDA_ARCH_LIST="8.0;8.9;9.0;12.0"` before `pip install`.
 - **Incremental C++/CUDA rebuilds**: Run `python build_ext.py`.
 
 </details>
@@ -48,21 +48,28 @@ pip install -e . --no-build-isolation
 
 ### 1. Serve a Pretrained Checkpoint
 
+`push_*` and `sample_actions` are non-blocking (`fast_age_ms < 0` until the first Slow + Fast pass commits):
+
 ```python
+import time
 import torch
 from tempo import Engine
 
 with Engine(
-    "lerobot/pi05_base",          # or "nvidia/GR00T-N1.5-3B", "lerobot/smolvla_base", or local path
+    "lerobot/smolvla_base",       # or "lerobot/pi05_base", "nvidia/GR00T-N1.5-3B", or local path
     num_streams=4,
     slow_devices=[0],             # [0] colocated, [0] + fast_devices=[1,2,3] disaggregated, or [[0,1]] PP
     fast_devices=[0],
-    fast_precision="fp8",         # "fp8" on SM89+, "bf16" on SM80+
-    prompt="pick up the cup",
+    prompt="pick up the cup",     # pass fast_precision="fp8" on SM89+ GPUs
 ) as engine:
     engine.push_slow_batch(torch.randint(0, 256, (4, *engine.slow_obs_shape), dtype=torch.uint8))
-    engine.push_fast_batch(torch.randn(4, *engine.fast_obs_shape, dtype=torch.bfloat16))
-    actions, fast_age_ms, slow_age_ms, underruns = engine.sample_actions(cpu=True)
+    total_underruns = 0
+    for step in range(150):       # 500 Hz control loop (2 ms tick)
+        if step % 25 == 0:        # 20 Hz Fast input update
+            engine.push_fast_batch(torch.randn(4, *engine.fast_obs_shape, dtype=torch.bfloat16))
+        actions, fast_age_ms, slow_age_ms, tick_underruns = engine.sample_actions(cpu=True)
+        total_underruns += tick_underruns
+        time.sleep(0.002)
 ```
 
 ### 2. Custom `SlowBackbone` and `FastHead`
@@ -70,13 +77,27 @@ with Engine(
 Subclass `SlowBackbone` and `FastHead` (or pair a built-in backbone with `DirectActionHead`) and pass them to `Engine(slow=..., fast=...)`:
 
 ```python
-from tempo import Engine, FastHead, SlowBackbone
+from tempo import Engine, FastHead, SlowBackbone, TemporalChannel
 
 class MySlowBackbone(SlowBackbone):
+    def __init__(self, encoder):
+        super().__init__()
+        self.encoder = encoder
+        self.channel = TemporalChannel(hidden_dim=512, seq_len=64, mode="hidden")
+        self.obs_shape = (3, 224, 224)
+
     def forward(self, obs, ctx):
         ctx.write_hidden_state(self.encoder(obs))  # or ctx.write_layer_kv(layer_idx, k, v)
 
 class MyFastHead(FastHead):
+    action_dim = 7
+    chunk_size = 50
+    obs_shape = (14,)
+
+    def __init__(self, policy_net):
+        super().__init__()
+        self.policy_net = policy_net
+
     def forward(self, fast_obs, state, frozen_prefix):
         hidden, delta_t_sec = state.read_hidden()  # or state.cross_attend(q, layer_idx=i)
         chunk = self.policy_net(fast_obs, hidden, delta_t_sec)
@@ -84,7 +105,7 @@ class MyFastHead(FastHead):
         chunk[:, :P] = state.splice_prefix(chunk[:, :P], frozen_prefix)
         return chunk  # [B, chunk_size, action_dim]
 
-with Engine(slow=MySlowBackbone(), fast=MyFastHead(), num_streams=4) as engine:
+with Engine(slow=MySlowBackbone(enc), fast=MyFastHead(net), num_streams=4) as engine:
     ...
 ```
 
@@ -97,31 +118,31 @@ python examples/quickstart.py --model lerobot/smolvla_base
 python examples/multi_gpu_serving.py --model nvidia/GR00T-N1.5-3B --topology auto
 ```
 
-See [examples/quickstart.py](./examples/quickstart.py) and [examples/multi_gpu_serving.py](./examples/multi_gpu_serving.py) for `@engine.stage`, `engine.pipeline`, and `RemoteSlowServer` / `RemoteSlowClient`.
+See [examples/quickstart.py](./examples/quickstart.py) and [examples/multi_gpu_serving.py](./examples/multi_gpu_serving.py) for `@engine.stage`, multi-GPU placements, and `RemoteSlowServer` / `RemoteSlowClient`.
 
 ## Models
 
-| Checkpoint | System 2 (`SlowBackbone`) | System 1 (`FastHead`) | Params (Active / Total) |
-| :--- | :--- | :--- | :---: |
-| `lerobot/pi05_base` | PaliGemma-2B (`18L`) | Gemma Action Expert (`18L`, 10-step Flow) | 2.83B / 3.3B |
-| `nvidia/GR00T-N1.5-3B` | Eagle2-VLM (`SigLIP + Qwen3-1.7B`) | Cross-Attention DiT (`16L`, 4-step Flow) | 2.09B / 3.0B |
-| `lerobot/smolvla_base` | SmolVLM2 (`SigLIP + Llama-16L`) | SmolLM2 Action Expert (`16L`, 10-step Flow) | 0.36B / 450M |
+| Checkpoint | System 2 (`SlowBackbone`) | System 1 (`FastHead`) | `fast_obs` &amp; Robot State | Active / Total Params |
+| :--- | :--- | :--- | :--- | :---: |
+| `lerobot/pi05_base` | PaliGemma-2B (`18L`) | Gemma Expert (`18L`, 10-step Flow) | Flow noise `(chunk_size, 32)`; shared state via `set_prompt(prompt, state=...)` | 2.83B / 3.3B |
+| `nvidia/GR00T-N1.5-3B` | Eagle2-VLM (`SigLIP + Qwen3-1.7B`) | Cross-Attn DiT (`16L`, 4-step Flow) | Per-stream robot state `(state_dim,)` (flow noise internal) | 2.09B / 3.0B |
+| `lerobot/smolvla_base` | SmolVLM2 (`SigLIP + Llama-16L`) | SmolLM2 Expert (`16L`, 10-step Flow) | Flow noise `(chunk_size, 32)`; shared state via `set_state(...)` | 0.36B / 450M |
 
-Fine-tuned checkpoints (such as `lerobot/pi05_libero_finetuned_v044` and `lerobot/smolvla_libero`) load directly without `lerobot` or `transformers`.
+`slow_obs` has shape `(num_cameras, 3, H, W)` RGB (`uint8 [0, 255]` or float `[0, 1]`), and states/actions use each checkpoint's normalized space. Fine-tuned checkpoints (such as `lerobot/pi05_libero_finetuned_v044` and `lerobot/smolvla_libero`) load directly without `lerobot` or `transformers`.
 
 ## Benchmarks
 
-Evaluated against a multi-stream PyTorch `SDPA` + per-stream `RWLock` baseline (`benchmarks/baselines.py`) under 500 Hz polling. **Max Streams at SLO** is the highest stream count meeting `Chunk P99 <= deadline`, `0` underruns, and `Slow staleness P99 <= 950 ms` (the eager PyTorch baseline misses the latency/underrun SLO even at 1 stream). `FP8` Fast heads retain `>0.999` cosine similarity against `BF16` on GR00T-N1.5 and $\pi_{0.5}$, and `>0.993` on SmolVLA.
+Each stream drives `2 Hz` Slow camera updates, `20 Hz` Fast chunk requests (`FP8` Fast heads on `SM89+`), and `500 Hz` action polling against a `BF16` multi-stream PyTorch `SDPA` + per-stream `RWLock` baseline (`benchmarks/baselines.py`). **Max Streams at SLO** is the highest stream count meeting `Chunk P99 <= deadline`, `0` underruns, and `Slow staleness P99 <= 950 ms` (the PyTorch baseline misses the latency/underrun SLO at `1` stream). `FP8` Fast heads retain `>0.999` cosine similarity against `BF16` on GR00T-N1.5 and $\pi_{0.5}$, and `>0.993` on SmolVLA.
 
 ### 1. Throughput &amp; Latency Across GPUs
 
-Placement notation: `Colocated` runs Slow and Fast on each GPU; `1S : 1F` and `1S : 3F` dedicate 1 GPU to Slow VLM and 1 or 3 GPUs to Fast action heads.
+`Colocated` runs Slow and Fast on each GPU; `1S : 1F` and `1S : 3F` dedicate 1 GPU to Slow VLM and 1 or 3 GPUs to Fast action heads. `Chunk P99` and `VRAM` are reported at `Max Streams at SLO`.
 
 | Model (Deadline) | Hardware &amp; Placement | Max Streams at SLO | Chunk `P99` (Tempo vs. PyTorch) | Zero-Underrun Capacity | Peak GPU / Total VRAM |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| `GR00T-N1.5-3B` (25 ms) | `4x H100 SXM` (`1S : 3F`) | **12** | **9.56 ms** vs. 393.8 ms (41.2x) | 48 streams (13.3 ms P99) | 2.67 / 6.95 GB |
+| `GR00T-N1.5-3B` (25 ms) | `4x H100 SXM` (`1S : 3F`) | **12** | **9.56 ms** vs. 393.8 ms (41.2x) | 48 streams | 2.67 / 6.95 GB |
 | `GR00T-N1.5-3B` (25 ms) | `2x H100 SXM` (`1S : 1F`) | **8** | **10.38 ms** vs. 125.6 ms (12.1x) | 32 streams | 3.23 / 4.73 GB |
-| `GR00T-N1.5-3B` (25 ms) | `1x H100 SXM` (`Colocated`) | **8** | **22.12 ms** vs. 150.6 ms (6.8x) | 32 streams (24.6 ms P99) | 3.98 / 3.98 GB |
+| `GR00T-N1.5-3B` (25 ms) | `1x H100 SXM` (`Colocated`) | **8** | **22.12 ms** vs. 150.6 ms (6.8x) | 32 streams | 3.98 / 3.98 GB |
 | `pi0.5` (30 ms) | `2x H100 SXM` (`1S : 1F`) | **1** | **20.76 ms** vs. 423.6 ms (20.4x) | 2 streams | 5.85 / 7.18 GB |
 | `pi0.5` (30 ms) | `1x H100 SXM` (`Colocated`) | **1** | **28.31 ms** vs. 457.4 ms (16.2x) | 2 streams | 6.15 / 6.15 GB |
 | `pi0.5` (30 ms) | `2x RTX PRO 6000` (`1S : 1F`) | **1** | **23.71 ms** vs. 381.9 ms (16.1x) | 2 streams | 5.35 / 6.63 GB |
@@ -152,7 +173,7 @@ End-to-end closed-loop rollouts through `tempo.Engine` (`benchmarks/libero_e2e_e
 | `libero_object` | Pick up the alphabet soup and place it in the basket | Pass (137 steps) | Pass (143 steps) |
 | `libero_goal` | Open the middle drawer of the cabinet | Pass (129 steps) | Pass (200 steps) |
 
-### Reproduce
+### Reproduce Throughput &amp; Latency Benchmarks
 
 ```bash
 python -m benchmarks.run_suite --model lerobot/smolvla_base --mode colocated --deadline-ms 25 --streams 1,4,8,12,16

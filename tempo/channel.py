@@ -472,6 +472,7 @@ class SlowCaptureContext:
         return k_hist, v_hist
 
     def write_layer_kv(self, layer_idx: int, k: torch.Tensor, v: torch.Tensor) -> None:
+        """Publishes bfloat16 KV tensors of shape ``[B, frame_seq_len, num_kv_heads, head_dim]`` for ``layer_idx``."""
         if self.mode != "kv":
             raise RuntimeError("write_layer_kv requires TemporalChannel(mode='kv')")
         if k.dtype != torch.bfloat16 or v.dtype != torch.bfloat16 or k.shape != v.shape or k.ndim != 4:
@@ -513,6 +514,7 @@ class SlowCaptureContext:
         )
 
     def write_hidden_state(self, hidden: torch.Tensor) -> None:
+        """Publishes a bfloat16 hidden-state tensor of shape ``[B, frame_seq_len, hidden_dim]``."""
         if self.mode != "hidden":
             raise RuntimeError("write_hidden_state requires TemporalChannel(mode='hidden')")
         feat_dim = self.num_kv_heads * self.head_dim
@@ -570,6 +572,7 @@ class SemanticStateView:
         return_lse: bool = False,
         out_lse: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Cross-attends sequence-first bfloat16 query ``[B, Q_len, num_q_heads, head_dim]`` over Slow KV ``layer_idx``."""
         _tempo_C = _load_ext()
         if self.mode != "kv":
             raise RuntimeError("cross_attend requires TemporalChannel(mode='kv')")
@@ -638,6 +641,7 @@ class SemanticStateView:
         out: Optional[torch.Tensor] = None,
         out_delta_sec: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Returns ``(hidden, delta_t_sec)`` with ``hidden`` ``[B, max_seq_len, hidden_dim]`` bf16 and age ``[B, max_seq_len]`` fp32."""
         _ensure_custom_ops()
         if self.mode != "hidden":
             raise RuntimeError("read_hidden requires TemporalChannel(mode='hidden')")
@@ -707,6 +711,13 @@ class Engine:
         max_q_len: int = 64,
         max_q_heads: int = 32,
     ) -> None:
+        """Constructs a Tempo serving engine from ``model`` (HF repo ID or path), ``(slow, fast)`` modules, or ``@engine.stage``.
+
+        - ``slow_devices``: ``0`` or ``[0, 1]`` for Slow data-parallel replicas, or ``[[0, 1]]`` for Slow pipeline stages.
+        - ``fast_devices``: ``0`` or ``[1, 2, 3]`` for Fast shards (defaults to ``slow_devices`` when single-stage).
+        - Timing contract: ``deadline_ms <= 1000 / fast_rate_hz`` and ``(horizon_steps - 1) * step_dt_ms > 1000 / fast_rate_hz + deadline_ms``.
+        - ``max_slow_aoi_ms``: Maximum Slow observation staleness (ms) before Slow takes scheduling priority.
+        """
         if num_streams < 1:
             raise ValueError(f"num_streams must be >= 1, got {num_streams}")
         if model is not None and (slow is not None or fast is not None):
@@ -879,6 +890,7 @@ class Engine:
         batch_size: int = 4,
         buckets: Sequence[int] = (1, 2, 4, 8, 16, 32, 64),
     ) -> Callable:
+        """Decorator registering a custom Slow stage (``publishes=channel``) or Fast stage (``reads=channel``)."""
         if rate_hz <= 0.0:
             raise ValueError("rate_hz must be positive")
         if (publishes is None) == (reads is None):
@@ -1704,9 +1716,11 @@ class Engine:
         sched.reset_telemetry()
 
     def rtc_stats(self):
+        """Returns cumulative RTC ring counters (``hard_underruns``, ``overruns``, ``commits``)."""
         return self._require_compiled().rtc_stats()
 
     def telemetry(self):
+        """Returns C++ scheduler telemetry (``fast_ttac_ms`` chunk latencies, ``slow_latency_ms``, ``fast_requests_served``)."""
         return self._require_compiled().telemetry()
 
     def push_slow(self, stream_id: int, obs: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
@@ -1771,7 +1785,11 @@ class Engine:
         return t_obs_ns
 
     def sample_actions(self, t_query_ns: Optional[int] = None, cpu: bool = False):
-        """Returns ``(actions, fast_age_ms, slow_age_ms, underruns)`` at ``t_query_ns`` (defaults to ``now_ns()``)."""
+        """Non-blocking RTC ring read at ``t_query_ns`` (defaults to ``now_ns()``).
+
+        Returns ``(actions [N, action_dim], fast_age_ms [N], slow_age_ms [N], underruns_this_tick: int)``.
+        Before a stream's first chunk commits, its ``fast_age_ms`` and ``slow_age_ms`` are ``-1.0``.
+        """
         sched = self._require_compiled()
         if t_query_ns is None:
             t_query_ns = sched.now_ns()

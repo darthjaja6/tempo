@@ -47,38 +47,41 @@ def run_multi_gpu_topology(model_id: str, topology: str) -> None:
         fast_in = torch.randn((8, *engine.fast_obs_shape), dtype=torch.bfloat16)
 
         engine.push_slow_batch(cams)
-        while len(engine.telemetry().slow_latency_ms) < engine.num_streams:
-            time.sleep(0.005)
-        engine.push_fast_batch(fast_in)
-        while engine.telemetry().fast_requests_served < engine.num_streams:
-            time.sleep(0.002)
-        engine.reset_stats()
+        while True:
+            engine.push_fast_batch(fast_in)
+            time.sleep(0.010)
+            _, fast_age_ms, _, _ = engine.sample_actions(cpu=True)
+            if bool((fast_age_ms >= 0).all()):
+                engine.reset_stats()
+                break
 
         t0 = time.monotonic()
         next_fast = t0 + 0.020
+        total_underruns = 0
         while time.monotonic() - t0 < 0.18:
             now = time.monotonic()
             if now >= next_fast:
                 engine.push_fast_batch(fast_in)
                 next_fast += 0.040
-            actions, fast_aoi_ms, slow_aoi_ms, underruns = engine.sample_actions(cpu=True)
+            actions, fast_age_ms, slow_age_ms, tick_underruns = engine.sample_actions(cpu=True)
+            total_underruns += int(tick_underruns)
             time.sleep(0.002)
 
         calib = engine.calibration_info or {}
 
-    ready = int(((fast_aoi_ms >= 0) & (slow_aoi_ms >= 0)).sum())
+    ready = int(((fast_age_ms >= 0) & (slow_age_ms >= 0)).sum())
     print(
         f"[topology={calib.get('mode')}] model={model_id} slow={calib.get('slow_devices')} "
-        f"fast={calib.get('fast_devices')} | actions={tuple(actions.shape)} | ready={ready}/8 | underruns={underruns}"
+        f"fast={calib.get('fast_devices')} | actions={tuple(actions.shape)} | ready={ready}/8 | underruns={total_underruns}"
     )
 
 
 def run_edge_cloud_demo() -> None:
-    ch = TemporalChannel(hidden_dim=128, seq_len=32, mode="hidden")
+    channel = TemporalChannel(hidden_dim=128, seq_len=32, mode="hidden")
     robot_engine = Engine(num_streams=1, action_dim=7, fast_obs_shape=(16,), step_dt_ms=2.0)
     head = torch.nn.Linear(16 + 128, 7, dtype=torch.bfloat16, device="cuda:0").eval()
 
-    @robot_engine.stage(rate_hz=20.0, reads=ch, devices=[0], deadline_ms=20.0, horizon_ms=100.0)
+    @robot_engine.stage(rate_hz=20.0, reads=channel, devices=[0], deadline_ms=20.0, horizon_ms=100.0)
     def on_robot_fast(fast_obs, state, frozen_prefix):
         hidden, _dt = state.read_hidden()
         q_target = head(torch.cat([fast_obs, hidden.mean(dim=1)], dim=-1))
@@ -93,16 +96,16 @@ def run_edge_cloud_demo() -> None:
     with RemoteSlowServer(cloud_vlm_fn, host="127.0.0.1", port=0) as srv, robot_engine:
         with RemoteSlowClient(robot_engine, host="127.0.0.1", port=srv.port) as client:
             client.push_slow(0, torch.randn(32, 64))
-            while len(robot_engine.telemetry().slow_latency_ms) < 1:
-                time.sleep(0.002)
-            robot_engine.push_fast(0, torch.randn(16))
-            while robot_engine.telemetry().fast_requests_served < 1:
-                time.sleep(0.001)
-            actions, fast_aoi_ms, slow_aoi_ms, underruns = robot_engine.sample_actions(cpu=True)
+            while True:
+                robot_engine.push_fast(0, torch.randn(16))
+                time.sleep(0.005)
+                actions, fast_age_ms, slow_age_ms, underruns = robot_engine.sample_actions(cpu=True)
+                if float(fast_age_ms[0]) >= 0.0:
+                    break
 
     print(
-        f"[edge-cloud] actions={tuple(actions.shape)} | slow_aoi={float(slow_aoi_ms[0]):.1f} ms | "
-        f"fast_aoi={float(fast_aoi_ms[0]):.1f} ms | underruns={underruns}"
+        f"[edge-cloud] actions={tuple(actions.shape)} | slow_age={float(slow_age_ms[0]):.1f} ms | "
+        f"fast_age={float(fast_age_ms[0]):.1f} ms | underruns={underruns}"
     )
 
 
