@@ -585,6 +585,8 @@ class SmolVLAFastHead(FastHead):
     ``fast_obs`` has shape ``(chunk_size, max_action_dim)`` supplying the initial flow noise.
     """
 
+    fast_obs_is_noise: bool = True
+
     def __init__(
         self,
         cfg: SmolVLAConfig,
@@ -893,6 +895,7 @@ def build_smolvla(
         chunk_size=cfg.chunk_size,
         slow_obs_shape=(cfg.num_cameras, 3, cfg.image_size, cfg.image_size),
         fast_obs_shape=(cfg.chunk_size, cfg.max_action_dim),
+        fast_obs_is_noise=bool(fast_shards[0].fast_obs_is_noise),
         step_dt_ms=fast_shards[0].resolve_step_dt_ms(),
         max_q_len=max(64, cfg.chunk_size),
         max_q_heads=cfg.num_heads,

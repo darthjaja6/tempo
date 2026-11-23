@@ -47,16 +47,11 @@ def run_multi_gpu_topology(model_id: str, topology: str) -> None:
         fast_in = torch.randn((8, *engine.fast_obs_shape), dtype=torch.bfloat16)
 
         engine.push_slow_batch(cams)
-        while True:
-            engine.push_fast_batch(fast_in)
-            time.sleep(0.010)
-            _, fast_age_ms, _, _ = engine.sample_actions(cpu=True)
-            if bool((fast_age_ms >= 0).all()):
-                engine.reset_stats()
-                break
+        engine.wait_ready(fast_in)
+        engine.reset_stats()
 
         t0 = time.monotonic()
-        next_fast = t0 + 0.020
+        next_fast = t0
         total_underruns = 0
         while time.monotonic() - t0 < 0.18:
             now = time.monotonic()
@@ -95,13 +90,9 @@ def run_edge_cloud_demo() -> None:
 
     with RemoteSlowServer(cloud_vlm_fn, host="127.0.0.1", port=0) as srv, robot_engine:
         with RemoteSlowClient(robot_engine, host="127.0.0.1", port=srv.port) as client:
-            client.push_slow(0, torch.randn(32, 64))
-            while True:
-                robot_engine.push_fast(0, torch.randn(16))
-                time.sleep(0.005)
-                actions, fast_age_ms, slow_age_ms, underruns = robot_engine.sample_actions(cpu=True)
-                if float(fast_age_ms[0]) >= 0.0:
-                    break
+            client.push_slow(torch.randn(32, 64))
+            robot_engine.wait_ready(torch.randn(16))
+            actions, fast_age_ms, slow_age_ms, underruns = robot_engine.sample_actions(cpu=True)
 
     print(
         f"[edge-cloud] actions={tuple(actions.shape)} | slow_age={float(slow_age_ms[0]):.1f} ms | "

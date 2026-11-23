@@ -329,7 +329,13 @@ class RemoteSlowClient:
             self._outbound.clear()
             self._last_pushed_ns.clear()
 
-    def push_slow(self, stream_id: int, obs: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
+    def push_slow(
+        self,
+        obs: torch.Tensor,
+        *,
+        stream_id: int = 0,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
         if stream_id < 0 or stream_id >= self.engine.num_streams:
             raise IndexError(f"stream_id {stream_id} out of range [0, {self.engine.num_streams})")
         if obs.ndim < 1 or obs.ndim > _MAX_NDIM or obs.numel() <= 0:
@@ -341,6 +347,7 @@ class RemoteSlowClient:
                 raise RuntimeError(f"RemoteSlowClient worker failed: {self._worker_error}") from self._worker_error
             prev_ns = self._last_pushed_ns.get(stream_id)
             if prev_ns is None or stamp_ns > prev_ns:
+                self.engine._note_remote_slow_push(stream_id, stamp_ns)
                 self._last_pushed_ns[stream_id] = stamp_ns
                 self._outbound[stream_id] = (stamp_ns, obs_cpu)
                 self._cv.notify()

@@ -450,6 +450,10 @@ PYBIND11_MODULE(_tempo_C, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("rtc_stats", &TimeAwareScheduler::rtc_stats)
       .def("telemetry", &TimeAwareScheduler::telemetry)
+      .def("note_expected_slow_obs", &TimeAwareScheduler::note_expected_slow_obs)
+      .def("all_streams_slow_settled", &TimeAwareScheduler::all_streams_slow_settled)
+      .def("all_streams_fast_committed_since", &TimeAwareScheduler::all_streams_fast_committed_since)
+      .def("max_staged_splice_ns", &TimeAwareScheduler::max_staged_splice_ns)
       .def("now_ns", &TimeAwareScheduler::now_ns);
 }
 

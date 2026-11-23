@@ -44,6 +44,20 @@ End-to-end MuJoCo rollouts via `tempo.Engine` ([`libero_e2e_eval.json`](./libero
 | `libero_object` | Pick up the alphabet soup and place it in the basket | Pass (137 steps) | Pass (143 steps) |
 | `libero_goal` | Open the middle drawer of the cabinet | Pass (129 steps) | Pass (200 steps) |
 
+## 4. Real-Time Moving-Object Manipulation (`inspect-robots` × `LIBERO-Dynamic`)
+
+Evaluated through [`robocurve/inspect-robots`](https://github.com/robocurve/inspect-robots) (`SELF_PACED` 20 Hz wall-clock MuJoCo physics) on [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1x H100`, [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)), where target objects move continuously at `0.03`, `0.06`, and `0.09 m/s` (`l1 / l2 / l3`) across 18 dynamic scenes (`libero_spatial`, `libero_object`, `libero_goal`) while GPU inference runs in real wall-clock time:
+
+| Model & Load | Policy | Overall Success | `0.03 / 0.06 / 0.09 m/s` | Latency (`P50 / P99`) | Underruns |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| `pi05_libero_finetuned_v044` (`N = 1`) | `SyncChunk` (`K = 10`) | 38.9% (7/18) | 33.3% / 50.0% / 33.3% | 183.1 / 223.0 ms (blocking) | — |
+| `pi05_libero_finetuned_v044` (`N = 1`) | `PyTorchAsync` (`SDPA`) | 27.8% (5/18) | 33.3% / 16.7% / 33.3% | 576.2 / 4,394.0 ms (`TTAC`) | 763 |
+| `pi05_libero_finetuned_v044` (`N = 1`) | **Tempo (`Engine`)** | **50.0% (9/18)** | **50.0% / 50.0% / 50.0%** | **21.7 / 31.3 ms** (`TTAC`) | **0** |
+| `pi05_libero_finetuned_v044` (`N = 2`) | `SyncChunk` (`K = 10`) | 33.3% (6/18) | 50.0% / 33.3% / 16.7% | 188.2 / 224.0 ms (blocking) | — |
+| `pi05_libero_finetuned_v044` (`N = 2`) | `PyTorchAsync` (`SDPA`) | 11.1% (2/18) | 0.0% / 16.7% / 16.7% | 463.5 / 4,353.8 ms (`TTAC`) | 1,462 |
+| `pi05_libero_finetuned_v044` (`N = 2`) | **Tempo (`Engine`)** | **50.0% (9/18)** | **50.0% / 50.0% / 50.0%** | **31.2 / 43.9 ms** (`TTAC`) | **0** |
+| `smolvla_libero` (`N = 4`) | `SyncChunk` / `PyTorchAsync` / **Tempo** | 0.0% (0/18 all) | 0.0% / 0.0% / 0.0% | 127.5 ms / 296.1 ms / **25.6 ms** (`P50`) | — / 1,847 / **0** |
+
 ## Reproduce
 
 ```bash
@@ -51,4 +65,5 @@ python -m benchmarks.run_suite --model lerobot/smolvla_base --mode colocated --d
 python -m benchmarks.run_suite --model nvidia/GR00T-N1.5-3B --mode both --deadline-ms 25 --streams 1,4,8,16,24,32
 python -m benchmarks.run_suite --model nvidia/GR00T-N1.5-3B --mode custom --slow-devices 0 --fast-devices 1,2,3 --deadline-ms 25 --streams 4,12,24,32,42,48
 python -m benchmarks.run_suite --model lerobot/pi05_base --mode four_gpu_matrix --deadline-ms 30 --streams 4,8,12,16,24,32
+python -m benchmarks.eval_libero_dynamic --dyn-repo /path/to/LIBERO-Dynamic --out-json benchmarks/libero_dynamic_eval.json
 ```

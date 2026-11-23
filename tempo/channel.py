@@ -1,9 +1,29 @@
+import atexit
 from dataclasses import dataclass, field
 import math
 import time
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
+import weakref
 import torch
 import torch.nn as nn
+
+
+_ACTIVE_ENGINES: "weakref.WeakSet[Engine]" = weakref.WeakSet()
+
+
+def _shutdown_active_engines() -> None:
+    first_exc: Optional[BaseException] = None
+    for eng in list(_ACTIVE_ENGINES):
+        try:
+            eng.stop()
+        except BaseException as exc:
+            if first_exc is None:
+                first_exc = exc
+    if first_exc is not None:
+        raise first_exc
+
+
+atexit.register(_shutdown_active_engines)
 
 
 def _load_ext():
@@ -675,12 +695,15 @@ class StageSpec:
     horizon_ms: float = 96.0
     batch_size: int = 4
     buckets: Tuple[int, ...] = (1, 2, 4, 8, 16, 32, 64)
+    fast_obs_is_noise: bool = False
 
 
 class Engine:
     """Fast serving engine for System 1 + System 2 robot policies."""
 
     TemporalChannel = TemporalChannel
+    scheduler = None
+    _running: bool = False
 
     def __init__(
         self,
@@ -845,6 +868,7 @@ class Engine:
                 deadline_ms=deadline_ms,
                 horizon_ms=eff_horizon,
                 buckets=buckets,
+                fast_obs_is_noise=dep.fast_obs_is_noise,
             )(_fast_fn)
 
             self.calibration_info = self.compile_and_calibrate()
@@ -889,12 +913,15 @@ class Engine:
         horizon_ms: float = 96.0,
         batch_size: int = 4,
         buckets: Sequence[int] = (1, 2, 4, 8, 16, 32, 64),
+        fast_obs_is_noise: bool = False,
     ) -> Callable:
         """Decorator registering a custom Slow stage (``publishes=channel``) or Fast stage (``reads=channel``)."""
         if rate_hz <= 0.0:
             raise ValueError("rate_hz must be positive")
         if (publishes is None) == (reads is None):
             raise ValueError("Stage must either publish to (Slow) or read from (Fast) a TemporalChannel")
+        if publishes is not None and fast_obs_is_noise:
+            raise ValueError("fast_obs_is_noise only applies to Fast stages (reads=...)")
 
         def decorator(fn: Callable) -> Callable:
             if publishes is not None:
@@ -920,6 +947,7 @@ class Engine:
                     deadline_ms=eff_deadline,
                     horizon_ms=horizon_ms,
                     buckets=tuple(sorted(set(buckets))),
+                    fast_obs_is_noise=bool(fast_obs_is_noise),
                 )
             return fn
 
@@ -1646,12 +1674,77 @@ class Engine:
         if not self._running:
             self.scheduler.start()
             self._running = True
+            _ACTIVE_ENGINES.add(self)
         return self
 
     def stop(self) -> None:
         if self.scheduler is not None:
             self.scheduler.stop()
         self._running = False
+        _ACTIVE_ENGINES.discard(self)
+
+    def __del__(self) -> None:
+        if self._running and self.scheduler is not None:
+            self.scheduler.stop()
+            self._running = False
+
+    def _note_remote_slow_push(self, stream_id: int, t_obs_ns: int) -> None:
+        self._require_compiled().note_expected_slow_obs(stream_id, t_obs_ns)
+
+    def wait_ready(self, fast_obs: Optional[torch.Tensor] = None, *, timeout_s: float = 10.0) -> None:
+        """Blocks until all pending Slow updates settle and a fresh Fast action chunk becomes active."""
+        sched = self._require_compiled()
+        assert self._fast_spec is not None
+        if not self._running:
+            raise RuntimeError("Engine must be started before calling wait_ready()")
+        if fast_obs is None and not self._fast_spec.fast_obs_is_noise:
+            raise ValueError(
+                "fast_obs is required in wait_ready(fast_obs) because this model's Fast stage "
+                "consumes state rather than flow noise"
+            )
+        if fast_obs is not None:
+            batch_shape = (self.num_streams, *self.fast_obs_shape)
+            single_ok = self.num_streams == 1 and fast_obs.shape == self.fast_obs_shape
+            if not single_ok and fast_obs.shape != batch_shape:
+                expected = f"{self.fast_obs_shape} (or {batch_shape})" if self.num_streams == 1 else str(batch_shape)
+                raise ValueError(f"wait_ready expected fast_obs of shape {expected}, got {tuple(fast_obs.shape)}")
+            if not (fast_obs.is_floating_point() or fast_obs.dtype == torch.uint8):
+                raise TypeError(
+                    f"wait_ready expects a floating-point (or uint8 image) tensor, got {fast_obs.dtype}; "
+                    "embed integer token IDs before pushing"
+                )
+
+        deadline = time.monotonic() + float(timeout_s)
+        while not sched.all_streams_slow_settled():
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out after {timeout_s:.1f}s waiting for Slow stage to publish across all streams "
+                    "(ensure push_slow / push_slow_batch was called for all streams)"
+                )
+            time.sleep(0.001)
+
+        if fast_obs is not None and self.num_streams == 1 and fast_obs.shape == self.fast_obs_shape:
+            t_fast_ns = self.push_fast(fast_obs)
+        else:
+            t_fast_ns = self.push_fast_batch(fast_obs)
+
+        while not sched.all_streams_fast_committed_since(t_fast_ns):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out after {timeout_s:.1f}s waiting for Fast stage to commit across all streams"
+                )
+            time.sleep(0.001)
+
+        splice_ns = int(sched.max_staged_splice_ns())
+        if splice_ns > 0:
+            rem_ns = splice_ns - sched.now_ns()
+            if rem_ns > 0:
+                if time.monotonic() + rem_ns * 1e-9 >= deadline:
+                    raise TimeoutError(
+                        f"Timed out after {timeout_s:.1f}s waiting for staged Fast chunk splice"
+                    )
+                time.sleep(rem_ns * 1e-9)
+            self.sample_actions(max(splice_ns, sched.now_ns()), cpu=False)
 
     def __enter__(self) -> "Engine":
         return self.start()
@@ -1723,16 +1816,24 @@ class Engine:
         """Returns C++ scheduler telemetry (``fast_ttac_ms`` chunk latencies, ``slow_latency_ms``, ``fast_requests_served``)."""
         return self._require_compiled().telemetry()
 
-    def push_slow(self, stream_id: int, obs: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
+    def push_slow(
+        self,
+        obs: torch.Tensor,
+        *,
+        stream_id: int = 0,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
         """Submits a Slow observation for ``stream_id`` (uint8 [0, 255] scales to [0, 1] bf16; floats keep range)."""
         sched = self._require_compiled()
+        if stream_id < 0 or stream_id >= self.num_streams:
+            raise IndexError(f"stream_id {stream_id} out of range [0, {self.num_streams})")
         obs = _to_bf16_obs(obs, "push_slow")
         if t_obs_ns is None:
             t_obs_ns = sched.now_ns()
         sched.submit_slow_obs(stream_id, t_obs_ns, obs)
         return t_obs_ns
 
-    def push_slow_batch(self, obs_batch: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
+    def push_slow_batch(self, obs_batch: torch.Tensor, *, t_obs_ns: Optional[int] = None) -> int:
         sched = self._require_compiled()
         if not self.active_slow_devices:
             raise RuntimeError("push_slow_batch called on Fast-only Engine without a local Slow stage")
@@ -1756,31 +1857,65 @@ class Engine:
     def publish_remote_hidden(self, stream_id: int, hidden: torch.Tensor, t_obs_ns: int) -> bool:
         return bool(self._require_compiled().submit_remote_hidden(stream_id, t_obs_ns, hidden))
 
-    def push_fast(self, stream_id: int, fast_obs: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
-        """Submits a Fast observation / initial noise tensor for ``stream_id``."""
+    def push_fast(
+        self,
+        fast_obs: Optional[torch.Tensor] = None,
+        *,
+        stream_id: int = 0,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
+        """Submits a Fast observation for ``stream_id`` (or samples standard normal GPU flow noise when ``fast_obs=None``)."""
         sched = self._require_compiled()
-        fast_obs = _to_bf16_obs(fast_obs, "push_fast")
+        assert self._fast_spec is not None
+        if stream_id < 0 or stream_id >= self.num_streams:
+            raise IndexError(f"stream_id {stream_id} out of range [0, {self.num_streams})")
+        if fast_obs is None:
+            if not self._fast_spec.fast_obs_is_noise:
+                raise ValueError(
+                    "fast_obs is required for this model because its Fast stage consumes state rather than flow noise"
+                )
+            dst_dev = self.active_fast_devices[stream_id % len(self.active_fast_devices)]
+            fast_obs = torch.randn(self.fast_obs_shape, dtype=torch.bfloat16, device=f"cuda:{dst_dev}")
+        else:
+            fast_obs = _to_bf16_obs(fast_obs, "push_fast")
         if t_obs_ns is None:
             t_obs_ns = sched.now_ns()
         sched.submit_fast_obs(stream_id, t_obs_ns, fast_obs)
         return t_obs_ns
 
-    def push_fast_batch(self, fast_obs_batch: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
+    def push_fast_batch(
+        self,
+        fast_obs_batch: Optional[torch.Tensor] = None,
+        *,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
         sched = self._require_compiled()
+        assert self._fast_spec is not None
         expected = (self.num_streams, *self.fast_obs_shape)
-        if fast_obs_batch.shape != expected:
-            raise ValueError(f"push_fast_batch expected shape {expected}, got {tuple(fast_obs_batch.shape)}")
-        if not (fast_obs_batch.is_floating_point() or fast_obs_batch.dtype == torch.uint8):
-            raise TypeError(
-                f"push_fast_batch expects a floating-point (or uint8 image) tensor, got {fast_obs_batch.dtype}; "
-                "embed integer token IDs before pushing"
+        if fast_obs_batch is not None:
+            if fast_obs_batch.shape != expected:
+                raise ValueError(f"push_fast_batch expected shape {expected}, got {tuple(fast_obs_batch.shape)}")
+            if not (fast_obs_batch.is_floating_point() or fast_obs_batch.dtype == torch.uint8):
+                raise TypeError(
+                    f"push_fast_batch expects a floating-point (or uint8 image) tensor, got {fast_obs_batch.dtype}; "
+                    "embed integer token IDs before pushing"
+                )
+        elif not self._fast_spec.fast_obs_is_noise:
+            raise ValueError(
+                "fast_obs_batch is required for this model because its Fast stage consumes state rather than flow noise"
             )
         if t_obs_ns is None:
             t_obs_ns = sched.now_ns()
         F = len(self.active_fast_devices)
         for f, f_dev in enumerate(self.active_fast_devices):
-            shard_obs = _to_bf16_obs(fast_obs_batch[f::F], "push_fast_batch", device=f"cuda:{f_dev}")
-            for idx, s in enumerate(range(f, self.num_streams, F)):
+            s_ids = range(f, self.num_streams, F)
+            if fast_obs_batch is None:
+                shard_obs = torch.randn(
+                    (len(s_ids), *self.fast_obs_shape), dtype=torch.bfloat16, device=f"cuda:{f_dev}"
+                )
+            else:
+                shard_obs = _to_bf16_obs(fast_obs_batch[f::F], "push_fast_batch", device=f"cuda:{f_dev}")
+            for idx, s in enumerate(s_ids):
                 sched.submit_fast_obs(s, t_obs_ns, shard_obs[idx])
         return t_obs_ns
 

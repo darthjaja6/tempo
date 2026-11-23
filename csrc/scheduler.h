@@ -121,6 +121,45 @@ class TimeAwareScheduler {
   SchedulerTelemetry telemetry() const;
   int64_t now_ns() const { return steady_now_ns(); }
 
+  void note_expected_slow_obs(int32_t stream_id, int64_t t_obs_ns) {
+    if (stream_id < 0 || stream_id >= num_streams_) {
+      throw std::out_of_range("stream_id out of range");
+    }
+    std::lock_guard<std::mutex> lk(ingress_[stream_id]->mu);
+    if (t_obs_ns <= ingress_[stream_id]->min_valid_slow_t_obs_ns) {
+      throw std::invalid_argument("t_obs_ns precedes engine reset watermark");
+    }
+    ingress_[stream_id]->expected_slow_t_obs_ns =
+        std::max(ingress_[stream_id]->expected_slow_t_obs_ns, t_obs_ns);
+  }
+
+  bool all_streams_slow_settled() const {
+    for (int32_t s = 0; s < num_streams_; ++s) {
+      std::lock_guard<std::mutex> lk(ingress_[s]->mu);
+      if (!ingress_[s]->has_published_slow || ingress_[s]->slow_pending || ingress_[s]->slow_inflight ||
+          ingress_[s]->last_pub_slow_t_obs_ns < ingress_[s]->expected_slow_t_obs_ns) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool all_streams_fast_committed_since(int64_t min_t_obs_ns) const {
+    for (int32_t s = 0; s < num_streams_; ++s) {
+      std::lock_guard<std::mutex> lk(ingress_[s]->mu);
+      if (ingress_[s]->last_committed_fast_t_obs_ns < min_t_obs_ns) return false;
+    }
+    return true;
+  }
+
+  int64_t max_staged_splice_ns() const {
+    int64_t max_ns = 0;
+    for (const auto& fs : fast_shards_) {
+      if (fs->rtc) max_ns = std::max(max_ns, fs->rtc->max_staged_splice_ns());
+    }
+    return max_ns;
+  }
+
  private:
   static constexpr int32_t kHandoffRingSlots = 2;
 
@@ -129,9 +168,11 @@ class TimeAwareScheduler {
     bool slow_pending{false};
     bool slow_inflight{false};
     int64_t slow_t_obs_ns{0};
+    int64_t expected_slow_t_obs_ns{0};
     bool fast_pending{false};
     int64_t fast_t_obs_ns{0};
     int64_t fast_wait_since_ns{0};
+    int64_t last_committed_fast_t_obs_ns{0};
     int64_t min_valid_slow_t_obs_ns{0};
     int64_t last_pub_slow_t_obs_ns{0};
     bool has_published_slow{false};

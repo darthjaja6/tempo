@@ -42,16 +42,16 @@ git clone https://github.com/darthjaja6/tempo.git && cd tempo
 pip install -e . --no-build-isolation
 ```
 
-Serve a pretrained policy in 5 lines:
+Serve a pretrained policy:
 
 ```python
 import torch
 from tempo import Engine
 
-with Engine("lerobot/smolvla_base", prompt="pick up the cup") as engine:
-    engine.push_slow(0, torch.zeros(engine.slow_obs_shape, dtype=torch.uint8))
-    engine.push_fast(0, torch.randn(engine.fast_obs_shape))
-    actions, *_ = engine.sample_actions(cpu=True)
+engine = Engine("lerobot/smolvla_base", prompt="pick up the cup")
+engine.push_slow(torch.zeros(engine.slow_obs_shape, dtype=torch.uint8))
+engine.wait_ready()
+actions, *_ = engine.sample_actions(cpu=True)
 ```
 
 - Custom `SlowBackbone` / `FastHead` policies & `@engine.stage`: [examples/quickstart.py](./examples/quickstart.py)
@@ -75,6 +75,8 @@ Evaluated against a multi-stream PyTorch `SDPA` baseline ([full tables & reprodu
 | `lerobot/pi05_base` | `4x H100 SXM` (`Colocated`) | **4** | **26.82 ms** vs. 2,943.4 ms (**109.7x**) | 4 streams |
 | `lerobot/pi05_base` | `1x RTX 4090` (`Colocated`) | **1** | **23.90 ms** vs. 271.6 ms (**11.4x**) | 2 streams |
 | `lerobot/smolvla_base` | `1x RTX 4090` (`Colocated`) | **8** | **24.36 ms** vs. 136.1 ms (**5.6x**) | 12 streams |
+
+On real-time moving-object manipulation ([robocurve/inspect-robots](https://github.com/robocurve/inspect-robots) × [LIBERO-Dynamic](https://github.com/renshaojie233/LIBERO-Dynamic), `0.03–0.09 m/s`), Tempo reaches **50.0%** task success with `0` underruns vs. **33.3%** for synchronous chunking and **11.1%** for async PyTorch at `N = 2` concurrent streams ([details](./benchmarks/README.md#4-real-time-moving-object-manipulation-inspect-robots--libero-dynamic)).
 
 ## License
 

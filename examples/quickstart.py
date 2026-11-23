@@ -21,16 +21,6 @@ from tempo import (
 )
 
 
-def _wait_until_ready(engine: Engine, fast_in: torch.Tensor) -> None:
-    while True:
-        engine.push_fast_batch(fast_in)
-        time.sleep(0.010)
-        _, fast_age_ms, _, _ = engine.sample_actions(cpu=True)
-        if bool((fast_age_ms >= 0).all()):
-            engine.reset_stats()
-            return
-
-
 def run_pretrained_demo(model_id: str) -> None:
     """Serve a pretrained Hugging Face checkpoint."""
     with Engine(model_id, num_streams=4, prompt="pick up the cup") as engine:
@@ -38,7 +28,8 @@ def run_pretrained_demo(model_id: str) -> None:
         fast_in = torch.randn((4, *engine.fast_obs_shape), dtype=torch.bfloat16)
 
         engine.push_slow_batch(cams)
-        _wait_until_ready(engine, fast_in)
+        engine.wait_ready(fast_in)
+        engine.reset_stats()
 
         t0 = time.monotonic()
         next_fast = t0
@@ -78,9 +69,9 @@ def run_modular_pairing_demo() -> None:
     prompt_embeds = torch.randn((cfg.prompt_len, cfg.vlm_width), dtype=torch.bfloat16) * 0.02
 
     with Engine(slow=slow, fast=fast, num_streams=4, prompt=prompt_embeds) as engine:
-        fast_in = torch.randn(4, *engine.fast_obs_shape)
         engine.push_slow_batch(torch.randint(0, 256, (4, *engine.slow_obs_shape), dtype=torch.uint8))
-        _wait_until_ready(engine, fast_in)
+        engine.wait_ready(torch.randn(4, *engine.fast_obs_shape))
+        engine.reset_stats()
 
         t0 = time.monotonic()
         last_fast = -1.0
@@ -125,7 +116,9 @@ def run_custom_stage_demo() -> None:
 
     with engine:
         engine.push_slow_batch(torch.randn(4, 50, 256))
-        _wait_until_ready(engine, torch.randn(4, 32))
+        engine.wait_ready(torch.randn(4, 32))
+        engine.reset_stats()
+
         t0 = time.monotonic()
         last_fast = -1.0
         total_underruns = 0

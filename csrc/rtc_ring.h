@@ -70,6 +70,7 @@ class RTCHorizonRing {
   std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, int64_t> sample_at(int64_t t_query_ns);
 
   RTCStats stats() const;
+  int64_t max_staged_splice_ns() const;
 
   int32_t num_streams() const { return num_streams_; }
   int32_t device_id() const { return device_id_; }

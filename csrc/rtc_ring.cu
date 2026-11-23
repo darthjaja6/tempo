@@ -525,4 +525,19 @@ RTCStats RTCHorizonRing::stats() const {
       static_cast<uint64_t>(ptr[2])};
 }
 
+int64_t RTCHorizonRing::max_staged_splice_ns() const {
+  std::lock_guard<std::mutex> lk(mu_);
+  c10::cuda::CUDAGuard guard(device_id_);
+  TS_RTC_CUDA_CHECK(cudaEventSynchronize(exec_done_ev_));
+  auto valid = staged_valid_.cpu();
+  auto splice = staged_t_splice_ns_.cpu();
+  const int32_t* v_ptr = valid.data_ptr<int32_t>();
+  const int64_t* s_ptr = splice.data_ptr<int64_t>();
+  int64_t max_ns = 0;
+  for (int32_t i = 0; i < num_streams_; ++i) {
+    if (v_ptr[i] != 0 && s_ptr[i] > max_ns) max_ns = s_ptr[i];
+  }
+  return max_ns;
+}
+
 }  // namespace tempo

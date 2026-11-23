@@ -405,7 +405,15 @@ class PyTorchDualStreamBaseline:
                     torch.cuda.current_stream(src.device).synchronize()
             return src.to(dst_dev, dtype=torch.bfloat16, non_blocking=True).clone()
 
-    def push_slow(self, stream_id: int, obs: torch.Tensor, t_obs_ns: int) -> None:
+    def push_slow(
+        self,
+        obs: torch.Tensor,
+        *,
+        stream_id: int = 0,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
+        if t_obs_ns is None:
+            t_obs_ns = time.monotonic_ns()
         r = self.slow_rep_of[stream_id]
         dst_dev_id = self.active_slow_devs[r][0]
         ing_st = self.slow_ingest_streams[r]
@@ -414,8 +422,17 @@ class PyTorchDualStreamBaseline:
             ev = torch.cuda.Event()
             ev.record(ing_st)
             self.pending_slow[r][stream_id] = (t_obs_ns, obs_copy, ev)
+        return t_obs_ns
 
-    def push_fast(self, stream_id: int, fast_obs: torch.Tensor, t_obs_ns: int) -> None:
+    def push_fast(
+        self,
+        fast_obs: torch.Tensor,
+        *,
+        stream_id: int = 0,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
+        if t_obs_ns is None:
+            t_obs_ns = time.monotonic_ns()
         f = self.fast_shard_of[stream_id]
         dst_dev_id = self.active_fast_devs[f]
         ing_st = self.fast_ingest_streams[f]
@@ -424,6 +441,7 @@ class PyTorchDualStreamBaseline:
             ev = torch.cuda.Event()
             ev.record(ing_st)
             self.pending_fast[f][stream_id] = (t_obs_ns, fobs_copy, ev)
+        return t_obs_ns
 
     def sample_actions(self, t_query_ns: int) -> Tuple[torch.Tensor, List[float], List[float], int]:
         H = self.horizon_steps

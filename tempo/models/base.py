@@ -59,6 +59,7 @@ class FastHead(nn.Module):
     action_dim: int
     chunk_size: int
     obs_shape: Tuple[int, ...]
+    fast_obs_is_noise: bool = False
     default_horizon_ms: float = 100.0
     default_step_dt_ms: Optional[float] = None
     max_q_len: int = 64
@@ -97,6 +98,7 @@ class DualSystemDeployment:
     chunk_size: int
     slow_obs_shape: Tuple[int, ...]
     fast_obs_shape: Tuple[int, ...]
+    fast_obs_is_noise: bool = False
     step_dt_ms: float = 2.0
     max_q_len: int = 64
     max_q_heads: int = 32
@@ -157,6 +159,7 @@ def deploy_modules(
         chunk_size=int(fast.chunk_size),
         slow_obs_shape=tuple(slow.obs_shape),
         fast_obs_shape=tuple(fast.obs_shape),
+        fast_obs_is_noise=bool(fast.fast_obs_is_noise),
         step_dt_ms=fast.resolve_step_dt_ms(),
         max_q_len=max(int(fast.chunk_size), int(fast.max_q_len)),
         max_q_heads=int(fast.max_q_heads),

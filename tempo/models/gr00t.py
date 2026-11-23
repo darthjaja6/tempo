@@ -911,6 +911,7 @@ def build_gr00t(
         chunk_size=cfg.chunk_size,
         slow_obs_shape=(cfg.num_cameras, 3, cfg.image_size, cfg.image_size),
         fast_obs_shape=(cfg.state_dim,),
+        fast_obs_is_noise=bool(fast_shards[0].fast_obs_is_noise),
         step_dt_ms=fast_shards[0].resolve_step_dt_ms(),
         max_q_len=max(64, 1 + cfg.num_future_tokens + cfg.chunk_size),
         max_q_heads=cfg.dit_heads,

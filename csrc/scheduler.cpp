@@ -1124,9 +1124,11 @@ void TimeAwareScheduler::reset_all_streams(c10::optional<torch::Tensor> init_pos
     ingress_[s]->slow_pending = false;
     ingress_[s]->slow_inflight = false;
     ingress_[s]->slow_t_obs_ns = 0;
+    ingress_[s]->expected_slow_t_obs_ns = 0;
     ingress_[s]->fast_pending = false;
     ingress_[s]->fast_t_obs_ns = 0;
     ingress_[s]->fast_wait_since_ns = 0;
+    ingress_[s]->last_committed_fast_t_obs_ns = 0;
     ingress_[s]->min_valid_slow_t_obs_ns = now;
     ingress_[s]->last_pub_slow_t_obs_ns = now;
     ingress_[s]->has_published_slow = false;
@@ -1348,9 +1350,9 @@ void TimeAwareScheduler::execute_fast_batch(
     const int32_t g_s = pending_fast[i].global_id;
     batch_local_streams[i] = l_s;
     fs.h_fast_local_ids[i] = l_s;
-    fs.h_fast_tobs[i] = pending_fast[i].t_obs_ns;
     {
       std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
+      fs.h_fast_tobs[i] = ingress_[g_s]->fast_t_obs_ns;
       ingress_[g_s]->fast_pending = false;
       TS_SCHED_CUDA_CHECK(cudaStreamWaitEvent(raw_exec, fs.fast_ingest_events[l_s], 0));
       TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
@@ -1431,6 +1433,12 @@ void TimeAwareScheduler::execute_fast_batch(
       out_slice,
       take_fast_count,
       raw_exec);
+  for (int32_t i = 0; i < take_fast_count; ++i) {
+    const int32_t g_s = pending_fast[i].global_id;
+    std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
+    ingress_[g_s]->last_committed_fast_t_obs_ns =
+        std::max(ingress_[g_s]->last_committed_fast_t_obs_ns, fs.h_fast_tobs[i]);
+  }
 
   const int64_t obs_fast_ns = steady_now_ns() - t_step_start_ns;
   int64_t& est_ref = fs.runtime_bucket_exec_ns[chosen_bucket];
@@ -1508,6 +1516,7 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
           {
             std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
             dropped_fast += mark_slow_published_locked(*ingress_[g_s], active_slow_tobs[i], pub_now);
+            ingress_[g_s]->slow_inflight = false;
           }
         }
         {
@@ -1653,11 +1662,12 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
           real_local_ids[i] = l_s;
           active_slow_local_ids[i] = l_s;
           active_slow_global_ids[i] = g_s;
-          active_slow_tobs[i] = cands[i].t_obs_ns;
-          stg.h_slow_tobs[i] = cands[i].t_obs_ns;
 
           std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
+          active_slow_tobs[i] = ingress_[g_s]->slow_t_obs_ns;
+          stg.h_slow_tobs[i] = active_slow_tobs[i];
           ingress_[g_s]->slow_pending = false;
+          ingress_[g_s]->slow_inflight = true;
           TS_SCHED_CUDA_CHECK(cudaStreamWaitEvent(raw_exec, rep.slow_ingest_events[l_s], 0));
           TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
               static_cast<char*>(stg.slow_obs_static.data_ptr()) + i * slow_elem_bytes,
@@ -1726,6 +1736,11 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
   TS_SCHED_CUDA_CHECK(cudaStreamSynchronize(raw_exec));
   if (slow_batch_active) {
     fs.tsc->abort_write_batch(active_slow_global_slots, nullptr);
+    for (int32_t i = 0; i < real_slow_count; ++i) {
+      const int32_t g_s = active_slow_global_ids[i];
+      std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
+      ingress_[g_s]->slow_inflight = false;
+    }
     slow_batch_active = false;
   }
 }
@@ -1856,13 +1871,14 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
         const int32_t g_s = cands[i].global_id;
         pkt.local_slow_ids[i] = l_s;
         pkt.global_ids[i] = g_s;
-        pkt.tobs_ns[i] = cands[i].t_obs_ns;
 
         const int32_t f = fast_shard_of_[g_s];
         pkt.shard_local_fast_ids[f].push_back(local_fast_id_[g_s]);
-        pkt.shard_tobs_ns[f].push_back(cands[i].t_obs_ns);
 
         std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
+        const int64_t picked_tobs_ns = ingress_[g_s]->slow_t_obs_ns;
+        pkt.tobs_ns[i] = picked_tobs_ns;
+        pkt.shard_tobs_ns[f].push_back(picked_tobs_ns);
         ingress_[g_s]->slow_pending = false;
         ingress_[g_s]->slow_inflight = true;
         TS_SCHED_CUDA_CHECK(cudaStreamWaitEvent(raw_exec, rep.slow_ingest_events[l_s], 0));

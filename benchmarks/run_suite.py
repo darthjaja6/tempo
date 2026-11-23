@@ -147,6 +147,7 @@ def _make_engine_from_deployment(
         reads=dep.channel,
         deadline_ms=deadline_ms,
         horizon_ms=dep.chunk_size * dep.step_dt_ms,
+        fast_obs_is_noise=dep.fast_obs_is_noise,
     )(_f)
     eng.calibration_info = eng.compile_and_calibrate()
     eng.reset()
@@ -240,7 +241,7 @@ def _run_traffic_point_engine(
     with eng:
         t_init = eng.now_ns()
         for s in range(num_streams):
-            eng.push_slow(s, s_obs[s], t_init)
+            eng.push_slow(s_obs[s], stream_id=s, t_obs_ns=t_init)
         time.sleep(min(0.8, 0.12 * math.ceil(num_streams / 4)))
 
         t_pre = time.monotonic()
@@ -250,7 +251,7 @@ def _run_traffic_point_engine(
             now_ns = eng.now_ns()
             for s in range(num_streams):
                 if now >= next_fast[s]:
-                    eng.push_fast(s, f_obs[s], now_ns)
+                    eng.push_fast(f_obs[s], stream_id=s, t_obs_ns=now_ns)
                     next_fast[s] = now + max(0.035, rng.gauss(0.050, 0.003))
             time.sleep(0.001)
         eng.reset_stats()
@@ -266,10 +267,10 @@ def _run_traffic_point_engine(
             now_ns = eng.now_ns()
             for s in range(num_streams):
                 if now >= next_slow[s]:
-                    eng.push_slow(s, s_obs[s], now_ns)
+                    eng.push_slow(s_obs[s], stream_id=s, t_obs_ns=now_ns)
                     next_slow[s] = now + max(0.25, rng.gauss(0.50, 0.03))
                 if now >= next_fast[s]:
-                    eng.push_fast(s, f_obs[s], now_ns)
+                    eng.push_fast(f_obs[s], stream_id=s, t_obs_ns=now_ns)
                     next_fast[s] = now + max(0.035, rng.gauss(0.050, 0.003))
             if now >= next_sample:
                 _, fa, sa, u = eng.sample_actions(now_ns, cpu=True)
@@ -360,7 +361,7 @@ def _run_traffic_point_baseline(
     try:
         t_init = time.monotonic_ns()
         for s in range(num_streams):
-            base.push_slow(s, s_obs[s], t_init)
+            base.push_slow(s_obs[s], stream_id=s, t_obs_ns=t_init)
         time.sleep(min(0.8, 0.12 * math.ceil(num_streams / 4)))
 
         t_pre = time.monotonic()
@@ -370,7 +371,7 @@ def _run_traffic_point_baseline(
             now_ns = time.monotonic_ns()
             for s in range(num_streams):
                 if now >= next_fast[s]:
-                    base.push_fast(s, f_obs[s], now_ns)
+                    base.push_fast(f_obs[s], stream_id=s, t_obs_ns=now_ns)
                     next_fast[s] = now + max(0.035, rng.gauss(0.050, 0.003))
             time.sleep(0.001)
         with base.stats_lock:
@@ -390,10 +391,10 @@ def _run_traffic_point_baseline(
             now_ns = time.monotonic_ns()
             for s in range(num_streams):
                 if now >= next_slow[s]:
-                    base.push_slow(s, s_obs[s], now_ns)
+                    base.push_slow(s_obs[s], stream_id=s, t_obs_ns=now_ns)
                     next_slow[s] = now + max(0.25, rng.gauss(0.50, 0.03))
                 if now >= next_fast[s]:
-                    base.push_fast(s, f_obs[s], now_ns)
+                    base.push_fast(f_obs[s], stream_id=s, t_obs_ns=now_ns)
                     next_fast[s] = now + max(0.035, rng.gauss(0.050, 0.003))
             if now >= next_sample:
                 _, fa, sa, u = base.sample_actions(now_ns)
@@ -453,7 +454,7 @@ def _measure_reaction_engine(
     eng_react_ms = 1500.0
     with eng:
         for s in range(num_streams):
-            eng.push_slow(s, bg_s)
+            eng.push_slow(bg_s, stream_id=s)
         t_wait = time.monotonic()
         while len(eng.telemetry().slow_latency_ms) < num_streams and time.monotonic() - t_wait < 2.0:
             time.sleep(0.01)
@@ -463,19 +464,19 @@ def _measure_reaction_engine(
             now = time.monotonic()
             for s in range(num_streams):
                 if now >= next_fast[s]:
-                    eng.push_fast(s, bg_f)
+                    eng.push_fast(bg_f, stream_id=s)
                     next_fast[s] = now + 0.050
             time.sleep(0.001)
 
         t0 = time.monotonic()
-        eng.push_slow(0, step_s)
+        eng.push_slow(step_s)
         consec = 0
         t_first_hit = 0.0
         while time.monotonic() - t0 < 1.50:
             now = time.monotonic()
             for s in range(num_streams):
                 if now >= next_fast[s]:
-                    eng.push_fast(s, bg_f)
+                    eng.push_fast(bg_f, stream_id=s)
                     next_fast[s] = now + 0.050
             acts, _, _, _ = eng.sample_actions(cpu=True)
             u_val = float(((acts[0].float() - act_zero) @ delta_dir).item())
@@ -530,7 +531,7 @@ def _measure_reaction_baseline(
     try:
         t_init = time.monotonic_ns()
         for s in range(num_streams):
-            base.push_slow(s, bg_s, t_init)
+            base.push_slow(bg_s, stream_id=s, t_obs_ns=t_init)
         time.sleep(min(1.5, 0.25 * math.ceil(num_streams / 4) + 0.25))
         t_pre = time.monotonic()
         next_fast = [t_pre + (s / max(1, num_streams)) * 0.050 for s in range(num_streams)]
@@ -539,12 +540,12 @@ def _measure_reaction_baseline(
             tns = time.monotonic_ns()
             for s in range(num_streams):
                 if now >= next_fast[s]:
-                    base.push_fast(s, bg_f, tns)
+                    base.push_fast(bg_f, stream_id=s, t_obs_ns=tns)
                     next_fast[s] = now + 0.050
             time.sleep(0.001)
 
         t0 = time.monotonic()
-        base.push_slow(0, step_s, time.monotonic_ns())
+        base.push_slow(step_s, t_obs_ns=time.monotonic_ns())
         consec = 0
         t_first_hit = 0.0
         while time.monotonic() - t0 < 1.50:
@@ -552,7 +553,7 @@ def _measure_reaction_baseline(
             tns = time.monotonic_ns()
             for s in range(num_streams):
                 if now >= next_fast[s]:
-                    base.push_fast(s, bg_f, tns)
+                    base.push_fast(bg_f, stream_id=s, t_obs_ns=tns)
                     next_fast[s] = now + 0.050
             acts, _, _, _ = base.sample_actions(time.monotonic_ns())
             u_val = float(((acts[0].float().cpu() - act_zero) @ delta_dir).item())
@@ -731,13 +732,21 @@ def _measure_closed_loop_engine(
         t_init = eng.now_ns()
         for s in range(num_streams):
             r = s % n_slow_rep
-            eng.push_slow(s, _render_closed_loop_slow_obs(0.0, scene_neg_by_rep[r], scene_pos_by_rep[r]), t_init)
+            eng.push_slow(
+                _render_closed_loop_slow_obs(0.0, scene_neg_by_rep[r], scene_pos_by_rep[r]),
+                stream_id=s,
+                t_obs_ns=t_init,
+            )
         time.sleep(min(0.6, 0.12 * math.ceil(num_streams / 4)))
         for _ in range(2):
             t_warm = eng.now_ns()
             for s in range(num_streams):
                 f = s % n_fast_shd
-                eng.push_fast(s, _build_closed_loop_fast_obs(f_base_by_shd[f], q_pos[s], 0.0, 0.0), t_warm)
+                eng.push_fast(
+                    _build_closed_loop_fast_obs(f_base_by_shd[f], q_pos[s], 0.0, 0.0),
+                    stream_id=s,
+                    t_obs_ns=t_warm,
+                )
             time.sleep(0.035)
         eng.reset_stats()
 
@@ -760,12 +769,12 @@ def _measure_closed_loop_engine(
                 if now >= next_slow[s]:
                     r = s % n_slow_rep
                     obs_s = _render_closed_loop_slow_obs(err_s / target_amp, scene_neg_by_rep[r], scene_pos_by_rep[r])
-                    eng.push_slow(s, obs_s, now_ns)
+                    eng.push_slow(obs_s, stream_id=s, t_obs_ns=now_ns)
                     next_slow[s] = now + slow_period_s
                 if now >= next_fast[s]:
                     f = s % n_fast_shd
                     f_s = _build_closed_loop_fast_obs(f_base_by_shd[f], q_pos[s], q_vel[s], err_s)
-                    eng.push_fast(s, f_s, now_ns)
+                    eng.push_fast(f_s, stream_id=s, t_obs_ns=now_ns)
                     next_fast[s] = now + 0.050
 
             act, _, _, u = eng.sample_actions(now_ns, cpu=True)
@@ -862,13 +871,21 @@ def _measure_closed_loop_baseline(
         t_init = time.monotonic_ns()
         for s in range(num_streams):
             r = s % base.R
-            base.push_slow(s, _render_closed_loop_slow_obs(0.0, scene_neg_by_rep[r], scene_pos_by_rep[r]), t_init)
+            base.push_slow(
+                _render_closed_loop_slow_obs(0.0, scene_neg_by_rep[r], scene_pos_by_rep[r]),
+                stream_id=s,
+                t_obs_ns=t_init,
+            )
         time.sleep(min(0.6, 0.12 * math.ceil(num_streams / 4)))
         for _ in range(2):
             t_warm = time.monotonic_ns()
             for s in range(num_streams):
                 f = s % base.F
-                base.push_fast(s, _build_closed_loop_fast_obs(f_base_by_shd[f], q_pos[s], 0.0, 0.0), t_warm)
+                base.push_fast(
+                    _build_closed_loop_fast_obs(f_base_by_shd[f], q_pos[s], 0.0, 0.0),
+                    stream_id=s,
+                    t_obs_ns=t_warm,
+                )
             time.sleep(0.035)
         with base.stats_lock:
             base.commit_hard_underruns = 0
@@ -892,12 +909,12 @@ def _measure_closed_loop_baseline(
                 if now >= next_slow[s]:
                     r = s % base.R
                     obs_s = _render_closed_loop_slow_obs(err_s / target_amp, scene_neg_by_rep[r], scene_pos_by_rep[r])
-                    base.push_slow(s, obs_s, now_ns)
+                    base.push_slow(obs_s, stream_id=s, t_obs_ns=now_ns)
                     next_slow[s] = now + slow_period_s
                 if now >= next_fast[s]:
                     f = s % base.F
                     f_s = _build_closed_loop_fast_obs(f_base_by_shd[f], q_pos[s], q_vel[s], err_s)
-                    base.push_fast(s, f_s, now_ns)
+                    base.push_fast(f_s, stream_id=s, t_obs_ns=now_ns)
                     next_fast[s] = now + 0.050
 
             act_gpu, _, _, u = base.sample_actions(now_ns)

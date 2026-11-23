@@ -1,0 +1,298 @@
+{
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "harness": "robocurve/inspect-robots",
+  "benchmark": "LIBERO-Dynamic (20 Hz real-time advancing MuJoCo physics)",
+  "runs": [
+    {
+      "policy": "SyncChunk (K=10, N=1)",
+      "total_episodes": 18,
+      "total_successes": 7,
+      "overall_success_rate_pct": 38.9,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 2,
+          "success_rate_pct": 33.3
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 2,
+          "success_rate_pct": 33.3
+        }
+      },
+      "max_target_disp_m": 0.2099,
+      "chunk_infer_p50_ms": 183.08,
+      "chunk_infer_p99_ms": 222.98,
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 1
+    },
+    {
+      "policy": "PyTorchAsync (SDPA, N=1)",
+      "total_episodes": 18,
+      "total_successes": 5,
+      "overall_success_rate_pct": 27.8,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 2,
+          "success_rate_pct": 33.3
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 1,
+          "success_rate_pct": 16.7
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 2,
+          "success_rate_pct": 33.3
+        }
+      },
+      "max_target_disp_m": 0.1273,
+      "fast_ttac_p50_ms": 576.16,
+      "fast_ttac_p99_ms": 4393.98,
+      "act_p50_us": 4129.36,
+      "underruns": 763,
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 1
+    },
+    {
+      "policy": "Tempo (Engine, N=1)",
+      "total_episodes": 18,
+      "total_successes": 9,
+      "overall_success_rate_pct": 50.0,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        }
+      },
+      "max_target_disp_m": 0.2858,
+      "fast_ttac_p50_ms": 21.67,
+      "fast_ttac_p99_ms": 31.34,
+      "act_p50_us": 3184.92,
+      "underruns": 0,
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 1
+    },
+    {
+      "policy": "SyncChunk (K=10, N=2)",
+      "total_episodes": 18,
+      "total_successes": 6,
+      "overall_success_rate_pct": 33.3,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 2,
+          "success_rate_pct": 33.3
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 1,
+          "success_rate_pct": 16.7
+        }
+      },
+      "max_target_disp_m": 0.3046,
+      "chunk_infer_p50_ms": 188.2,
+      "chunk_infer_p99_ms": 224.04,
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 2
+    },
+    {
+      "policy": "PyTorchAsync (SDPA, N=2)",
+      "total_episodes": 18,
+      "total_successes": 2,
+      "overall_success_rate_pct": 11.1,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 1,
+          "success_rate_pct": 16.7
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 1,
+          "success_rate_pct": 16.7
+        }
+      },
+      "max_target_disp_m": 0.204,
+      "fast_ttac_p50_ms": 463.53,
+      "fast_ttac_p99_ms": 4353.82,
+      "act_p50_us": 4015.01,
+      "underruns": 1462,
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 2
+    },
+    {
+      "policy": "Tempo (Engine, N=2)",
+      "total_episodes": 18,
+      "total_successes": 9,
+      "overall_success_rate_pct": 50.0,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 3,
+          "success_rate_pct": 50.0
+        }
+      },
+      "max_target_disp_m": 0.2822,
+      "fast_ttac_p50_ms": 31.21,
+      "fast_ttac_p99_ms": 43.86,
+      "act_p50_us": 3075.48,
+      "underruns": 0,
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 2
+    },
+    {
+      "policy": "SyncChunk (K=10, N=4)",
+      "total_episodes": 18,
+      "total_successes": 0,
+      "overall_success_rate_pct": 0.0,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        }
+      },
+      "max_target_disp_m": 0.1162,
+      "chunk_infer_p50_ms": 127.49,
+      "chunk_infer_p99_ms": 154.72,
+      "model": "lerobot/smolvla_libero",
+      "num_streams": 4
+    },
+    {
+      "policy": "PyTorchAsync (SDPA, N=4)",
+      "total_episodes": 18,
+      "total_successes": 0,
+      "overall_success_rate_pct": 0.0,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        }
+      },
+      "max_target_disp_m": 0.1178,
+      "fast_ttac_p50_ms": 296.06,
+      "fast_ttac_p99_ms": 2689.27,
+      "act_p50_us": 10327.22,
+      "underruns": 1847,
+      "model": "lerobot/smolvla_libero",
+      "num_streams": 4
+    },
+    {
+      "policy": "Tempo (Engine, N=4)",
+      "total_episodes": 18,
+      "total_successes": 0,
+      "overall_success_rate_pct": 0.0,
+      "per_level": {
+        "l1": {
+          "speed_mps": 0.03,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l2": {
+          "speed_mps": 0.06,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        },
+        "l3": {
+          "speed_mps": 0.09,
+          "episodes": 6,
+          "successes": 0,
+          "success_rate_pct": 0.0
+        }
+      },
+      "max_target_disp_m": 0.1159,
+      "fast_ttac_p50_ms": 25.55,
+      "fast_ttac_p99_ms": 31.8,
+      "act_p50_us": 10420.91,
+      "underruns": 0,
+      "model": "lerobot/smolvla_libero",
+      "num_streams": 4
+    }
+  ]
+}
