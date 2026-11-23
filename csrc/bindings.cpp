@@ -13,7 +13,7 @@ namespace py = pybind11;
 namespace tempo {
 
 PYBIND11_MODULE(_tempo_C, m) {
-  m.doc() = "Dual-System Embodied Inference Engine C++/CUDA Core";
+  m.doc() = "Tempo C++/CUDA runtime extension";
 
   m.def("steady_now_ns", &steady_now_ns, "Monotonic steady clock in nanoseconds");
 

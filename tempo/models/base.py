@@ -22,11 +22,10 @@ def validate_fast_precision(fast_precision: str) -> str:
 
 
 class SlowBackbone(nn.Module):
-    """Standard System-2 backbone interface for dual-system embodied policies.
+    """System-2 backbone base class.
 
-    Subclasses encode low-rate multimodal observations (vision, language, scene history)
-    and publish semantic state into ``ctx`` via ``ctx.write_layer_kv(...)`` or
-    ``ctx.write_hidden_state(...)``.
+    Subclasses define ``channel`` and ``obs_shape`` and publish KV or hidden states in ``forward(obs, ctx)``
+    via ``ctx.write_layer_kv(...)`` or ``ctx.write_hidden_state(...)``.
     """
 
     channel: TemporalChannel
@@ -51,10 +50,10 @@ class SlowBackbone(nn.Module):
 
 
 class FastHead(nn.Module):
-    """Standard System-1 action head interface for dual-system embodied policies.
+    """System-1 action head base class.
 
-    Algorithm-neutral: supports multi-step Flow-Matching, Diffusion, 1-step parallel
-    action regression (ACT / OFT), or recurrent policies through standard ``forward()``.
+    Subclasses define ``action_dim``, ``chunk_size``, and ``obs_shape``, and return action chunks of shape
+    ``(B, chunk_size, action_dim)`` from ``forward(fast_obs, state, frozen_prefix)``.
     """
 
     action_dim: int

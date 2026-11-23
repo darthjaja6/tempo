@@ -79,12 +79,12 @@ def run_edge_cloud_demo() -> None:
     head = torch.nn.Linear(16 + 128, 7, dtype=torch.bfloat16, device="cuda:0").eval()
 
     @robot_engine.stage(rate_hz=20.0, reads=ch, devices=[0], deadline_ms=20.0, horizon_ms=100.0)
-    def on_robot_fast(fast_obs, sem_state, frozen_prefix):
-        hidden, _dt = sem_state.read_hidden()
+    def on_robot_fast(fast_obs, state, frozen_prefix):
+        hidden, _dt = state.read_hidden()
         q_target = head(torch.cat([fast_obs, hidden.mean(dim=1)], dim=-1))
         B, P, A = frozen_prefix.shape
         chunk = q_target.unsqueeze(1).expand(B, robot_engine.horizon_steps, A).clone()
-        chunk[:, :P, :] = sem_state.splice_prefix(chunk[:, :P, :], frozen_prefix)
+        chunk[:, :P, :] = state.splice_prefix(chunk[:, :P, :], frozen_prefix)
         return chunk
 
     def cloud_vlm_fn(batch_obs: torch.Tensor) -> torch.Tensor:

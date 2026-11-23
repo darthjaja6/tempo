@@ -99,7 +99,7 @@ class _ClientConn:
 
 
 class RemoteSlowServer:
-    """AoI-batched Slow VLM server echoing client observation timestamps alongside BF16 latent states."""
+    """Batched TCP Slow VLM server returning BF16 latent states with echoed client timestamps."""
 
     def __init__(
         self,
@@ -264,7 +264,7 @@ class RemoteSlowServer:
 
 
 class RemoteSlowClient:
-    """Non-blocking Echo-Timestamp client bridging an on-device Fast Engine to a RemoteSlowServer."""
+    """Non-blocking TCP client connecting an on-device Fast Engine to a RemoteSlowServer."""
 
     def __init__(
         self,

@@ -317,7 +317,7 @@ def _normalize_slow_devices(devices: DeviceSpec, num_stages: int) -> Tuple[Tuple
 
 @dataclass
 class TemporalChannel:
-    """Declarative cross-rate state channel backed by lock-free (M+2) TSC pages."""
+    """Cross-rate KV or hidden-state channel shared between Slow and Fast stages."""
 
     layers: int = 1
     num_kv_heads: int = 2
@@ -378,7 +378,7 @@ class TemporalChannel:
 
 @dataclass
 class SlowCaptureContext:
-    """Context passed to slow_stage / pipeline stages during compilation and TSC binding."""
+    """Context passed to Slow stages / SlowBackbone.forward() to publish KV or hidden state."""
 
     k_pool: Optional[torch.Tensor]
     v_pool: Optional[torch.Tensor]
@@ -436,7 +436,7 @@ class SlowCaptureContext:
     def gather_history_kv(
         self, layer_idx: int, batch_size: int, num_kv_heads: int, head_dim: int
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
-        """Gathers retained sliding-window KV pages (with relative-time RoPE) from the stage's TSC pool."""
+        """Gathers sliding-window KV history pages (with relative-time RoPE) from the shared pool."""
         hist_len = self.history_seq_len
         if self.mode != "kv" or hist_len <= 0:
             return None, None
@@ -540,7 +540,7 @@ class SlowCaptureContext:
 
 @dataclass
 class SemanticStateView:
-    """Zero-copy view into TSC paged state passed to fast_stage."""
+    """Read-only view of shared Slow KV or hidden state passed to FastHead.forward() / fast stages."""
 
     k_pool: torch.Tensor
     v_pool: torch.Tensor
@@ -1648,7 +1648,7 @@ class Engine:
         self.stop()
 
     def set_prompt(self, prompt: Union[str, Sequence[int], torch.Tensor], **kwargs: object) -> None:
-        """Updates the language task instruction across all Slow replicas safely (zero graph recapture)."""
+        """Pauses the scheduler, updates the shared prompt buffer on all Slow replicas, and resumes."""
         if self.deployment is None:
             raise RuntimeError("set_prompt() requires an Engine constructed with model=... or (slow=..., fast=...)")
         was_running = self._running
@@ -1666,7 +1666,7 @@ class Engine:
                 self._running = True
 
     def set_state(self, state: torch.Tensor) -> None:
-        """Updates slow-prefix robot proprioceptive state across all Slow replicas safely (zero graph recapture)."""
+        """Pauses the scheduler, updates the shared robot state buffer on all Slow replicas, and resumes."""
         if self.deployment is None:
             raise RuntimeError("set_state() requires an Engine constructed with model=... or (slow=..., fast=...)")
         was_running = self._running
@@ -1687,7 +1687,7 @@ class Engine:
         return self._require_compiled().now_ns()
 
     def reset(self, q_init: Optional[torch.Tensor] = None) -> None:
-        """Resets all stream trajectories, TSC slots, and stats; seamlessly restarts if currently running."""
+        """Resets all stream trajectories, shared cache slots, and stats."""
         sched = self._require_compiled()
         was_running = self._running
         if was_running:
@@ -1710,6 +1710,7 @@ class Engine:
         return self._require_compiled().telemetry()
 
     def push_slow(self, stream_id: int, obs: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
+        """Submits a Slow observation for ``stream_id`` (uint8 [0, 255] scales to [0, 1] bf16; floats keep range)."""
         sched = self._require_compiled()
         obs = _to_bf16_obs(obs, "push_slow")
         if t_obs_ns is None:
@@ -1742,6 +1743,7 @@ class Engine:
         return bool(self._require_compiled().submit_remote_hidden(stream_id, t_obs_ns, hidden))
 
     def push_fast(self, stream_id: int, fast_obs: torch.Tensor, t_obs_ns: Optional[int] = None) -> int:
+        """Submits a Fast observation / initial noise tensor for ``stream_id``."""
         sched = self._require_compiled()
         fast_obs = _to_bf16_obs(fast_obs, "push_fast")
         if t_obs_ns is None:
@@ -1769,6 +1771,7 @@ class Engine:
         return t_obs_ns
 
     def sample_actions(self, t_query_ns: Optional[int] = None, cpu: bool = False):
+        """Returns ``(actions, fast_age_ms, slow_age_ms, underruns)`` at ``t_query_ns`` (defaults to ``now_ns()``)."""
         sched = self._require_compiled()
         if t_query_ns is None:
             t_query_ns = sched.now_ns()

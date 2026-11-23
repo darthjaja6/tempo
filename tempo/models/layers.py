@@ -457,11 +457,7 @@ class SigLIPVisionTower(nn.Module):
 
 
 class DirectActionHead(FastHead):
-    """1-step parallel action regression FastHead (ACT / OFT style, zero iterative denoising).
-
-    Demonstrates algorithm-neutral n x m composition: pairs cleanly with any SlowBackbone
-    publishing either ``mode='kv'`` or ``mode='hidden'`` via ``DirectActionHead(slow.channel, ...)``.
-    """
+    """Single-step cross-attention action head compatible with ``mode='kv'`` or ``mode='hidden'`` channels."""
 
     def __init__(
         self,

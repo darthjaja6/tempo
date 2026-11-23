@@ -490,12 +490,10 @@ class Pi05ExpertLayer(nn.Module):
 
 
 class Pi05FastHead(FastHead):
-    """System-1 Gemma-300M Flow-Matching Action Expert for pi0.5 (lerobot/pi05_base).
+    """System-1 Gemma-300M flow-matching action head for pi0.5.
 
-    Following OpenPI / LeRobot pi0.5 (modeling_pi05.py:824-855, 1616), pi0.5 intentionally
-    omits an expert-side state_proj and tokenizes discretized proprioceptive state in the
-    System-2 PaliGemma prompt via ``set_prompt(..., state=...)``. ``fast_obs`` has shape
-    ``(chunk_size, max_action_dim)`` supplying the per-chunk initial flow-matching noise x_1.
+    Robot state is discretized into the System-2 prompt via ``set_prompt(..., state=...)``;
+    ``fast_obs`` has shape ``(chunk_size, max_action_dim)`` supplying the initial flow noise.
     """
 
     def __init__(

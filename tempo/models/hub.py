@@ -133,7 +133,7 @@ def resolve_checkpoint(model_id_or_path: Union[str, Path]) -> Tuple[Dict[str, An
 
 
 def load_hf_tokenizer(repo_or_path: Union[str, Path], *, checkpoint_dir: Optional[Path] = None):
-    """Loads a fast Rust BPE/Unigram tokenizer from a local checkpoint directory or Hugging Face repo."""
+    """Loads ``tokenizer.json`` from a local checkpoint directory or Hugging Face repo."""
     from tokenizers import Tokenizer
 
     if checkpoint_dir is not None:
@@ -152,7 +152,7 @@ def load_hf_tokenizer(repo_or_path: Union[str, Path], *, checkpoint_dir: Optiona
 
 
 class SafetensorLoader:
-    """Lazy, low-RAM safetensors reader supporting single-file and sharded checkpoints."""
+    """Safetensors reader supporting single-file and sharded checkpoints."""
 
     def __init__(self, ckpt_dir: Union[str, Path]) -> None:
         self.ckpt_dir = Path(ckpt_dir)

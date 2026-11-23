@@ -579,12 +579,10 @@ class SmolVLAExpertLayer(nn.Module):
 
 
 class SmolVLAFastHead(FastHead):
-    """System-1 16-Layer SmolLM2 Action Expert for SmolVLA (lerobot/smolvla_base, head_dim=64).
+    """System-1 SmolLM2 flow-matching action head for SmolVLA.
 
-    Following upstream SmolVLA (modeling_smolvla.py:671, 698-705), robot state is projected
-    into the System-2 SmolVLM2 prefix via ``model.state_proj`` (updated via ``set_state()``),
-    while ``fast_obs`` of shape ``(chunk_size, max_action_dim)`` supplies the per-chunk
-    initial flow-matching noise x_1.
+    Robot state is projected into the System-2 prefix via ``set_state()``;
+    ``fast_obs`` has shape ``(chunk_size, max_action_dim)`` supplying the initial flow noise.
     """
 
     def __init__(

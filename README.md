@@ -5,64 +5,29 @@ Fast serving engine for System 1 + System 2 robot policies
 </h3>
 
 <p align="center">
-| <a href="#install"><b>Install</b></a> | <a href="#quick-start"><b>Quick Start</b></a> | <a href="#models-and-hardware"><b>Models &amp; Hardware</b></a> | <a href="#benchmarks"><b>Benchmarks</b></a> | <a href="./examples"><b>Examples</b></a> | <a href="./LICENSE"><b>License</b></a> |
+| <a href="#install"><b>Install</b></a> | <a href="#quick-start"><b>Quick Start</b></a> | <a href="#models"><b>Models</b></a> | <a href="#benchmarks"><b>Benchmarks</b></a> | <a href="./examples"><b>Examples</b></a> | <a href="./LICENSE"><b>License</b></a> |
 </p>
 
 ---
 
-**Tempo** is a fast serving engine for `System 1 + System 2` robot policies such as $\pi_{0.5}$, GR00T-N1.5, SmolVLA, and Helix, supporting single-GPU, multi-GPU, and edge-cloud deployments.
+**Tempo** serves `System 1 + System 2` robot policies ($\pi_{0.5}$, GR00T-N1.5, SmolVLA, and custom PyTorch `nn.Module` policies) across single-GPU, multi-GPU, and edge-cloud setups—depending only on `torch`, `safetensors`, and `tokenizers` (no `transformers` or `diffusers`).
 
 <p align="center">
   <img src="./architecture.svg" width="100%" alt="Tempo Architecture">
 </p>
 
-Evaluated against a multi-stream PyTorch `SDPA` baseline ([details →](#benchmarks)):
-
-| Model | Hardware &amp; Placement | Max Streams at SLO<br>(Tempo vs. PyTorch) | Chunk Latency `P99`<br>(Tempo vs. PyTorch) | Zero-Underrun Capacity /<br>Closed-Loop Success |
-| :--- | :--- | :---: | :---: | :---: |
-| **`nvidia/GR00T-N1.5-3B`** | **`4x H100 SXM`** (`1S : 3F`) | **`12`** vs. `0` | **`9.56 ms`** vs. `393.8 ms` (**`41.2x`**) | **`48` streams** (`13.3 ms` P99) / **`100.0%`** vs. `0.0%` |
-| **`nvidia/GR00T-N1.5-3B`** | **`1x H100 SXM`** (`Colocated`) | **`8`** vs. `0` | **`22.12 ms`** vs. `150.6 ms` (**`6.8x`**) | **`32` streams** (`24.6 ms` P99) / **`100.0%`** vs. `0.0%` |
-| **`lerobot/pi05_base`** | **`4x H100 SXM`** (`Colocated`) | **`4`** vs. `0` | **`26.82 ms`** vs. `2,943.4 ms` (**`109.7x`**) | `4` streams / **`100.0%`** vs. `0.0%` |
-| **`lerobot/pi05_base`** | **`2x H100 SXM`** (`1S : 1F`) | **`1`** vs. `0` | **`20.76 ms`** vs. `423.6 ms` (**`20.4x`**) | `2` streams / **`100.0%`** vs. `0.0%` |
-| **`lerobot/pi05_base`** | **`1x RTX 4090`** (`Colocated`) | **`1`** vs. `0` | **`23.90 ms`** vs. `271.6 ms` (**`11.4x`**) | `2` streams (`5.55 GB` VRAM, `0` vs. `2,952` underruns) |
-| **`lerobot/smolvla_base`** | **`1x RTX 4090`** (`Colocated`) | **`8`** vs. `0` | **`24.36 ms`** vs. `136.1 ms` (**`5.6x`**) | **`12` streams** (`0.98 GB` VRAM, `0` vs. `18,974` underruns) |
-| **`lerobot/smolvla_base`** | **`2x RTX PRO 6000`** (`1S : 1F`) | **`12`** vs. `0` | **`22.98 ms`** vs. `292.1 ms` (**`12.7x`**) | **`16` streams** (`1.07 GB` VRAM, `0` vs. `15,152` underruns) |
-
 ### Key Features
 
-- **Lock-free paged KV and latent cache** across asynchronous Slow (System 2) and Fast (System 1) streams
+- **Lock-free paged KV and latent cache** shared between asynchronous Slow (System 2) and Fast (System 1) streams
 - **3D relative-time RoPE** and Split-K cross-attention for asynchronous sensor timestamps
 - **C++ scheduler** with deadline batching and latest-frame sensor coalescing
 - **Piecewise CUDA Graph slicing** (`<= 2 ms`) so Slow VLM prefill does not stall Fast action generation on a single GPU
-- **Automatic `torch.compile`, bucketed CUDA Graphs, and `FP8`** for standard PyTorch `nn.Module` policies
+- **Automatic `torch.compile`, bucketed CUDA Graphs, and `FP8`** on standard PyTorch `nn.Module` policies
 - **Real-Time Chunking (RTC)** ring buffer with frozen-prefix splicing and smooth overrun blending
-- **Flexible multi-GPU and edge-cloud placement**: colocated, disaggregated Slow/Fast GPUs, Slow pipeline parallelism, and TCP edge-cloud split serving
-
-## Models and Hardware
-
-### Built-In Models
-
-| Checkpoint | System 2 (`SlowBackbone`) | System 1 (`FastHead`) | Params (Active / Total) |
-| :--- | :--- | :--- | :---: |
-| **`lerobot/pi05_base`** | PaliGemma-2B (`18L`) | Gemma Action Expert (`18L`, 10-step Flow) | `2.83B` / `3.3B` |
-| **`nvidia/GR00T-N1.5-3B`** | Eagle2-VLM (`SigLIP + Qwen3-1.7B`) | Cross-Attention DiT (`16L`, 4-step Flow) | `2.09B` / `3.0B` |
-| **`lerobot/smolvla_base`** | SmolVLM2 (`SigLIP + Llama-16L`) | SmolLM2 Action Expert (`16L`, 10-step Flow) | `0.36B` / `450M` |
-| **`DirectActionHead`** | Any `SlowBackbone` | 1-step MLP regression head | Configurable |
-
-Fine-tuned variants (e.g. `lerobot/pi05_libero_finetuned_v044`, `lerobot/smolvla_libero`) work out of the box, and custom architectures can be registered via `@ModelRegistry.register(...)`.
-
-### Supported GPUs
-
-| Architecture | GPUs | Supported Fast Precision |
-| :--- | :--- | :--- |
-| **Blackwell (`SM100–SM120`)** | B200, RTX PRO 6000 Blackwell, RTX 5090 | `fp8`, `bf16` |
-| **Hopper (`SM90`)** | H100, H200, H800 | `fp8`, `bf16` |
-| **Ada (`SM89`)** | RTX 4090, RTX 6000 Ada, L40S | `fp8`, `bf16` |
-| **Ampere (`SM80–SM86`)** | A100, A40, RTX 3090 | `bf16` |
 
 ## Install
 
-Requires Linux (`x86_64`), Python `>= 3.10`, PyTorch `>= 2.5` with CUDA, and CUDA Toolkit `>= 12.0`.
+Requires Linux (`x86_64`), Python `>= 3.10`, PyTorch `>= 2.5` with CUDA, CUDA Toolkit `>= 12.0`, and an NVIDIA GPU with `SM80+` (`BF16` on Ampere+; `FP8` on Ada/Hopper/Blackwell `SM89+`).
 
 ```bash
 git clone https://github.com/darthjaja6/tempo.git
@@ -97,27 +62,15 @@ with Engine(
 ) as engine:
     engine.push_slow_batch(torch.randint(0, 256, (4, *engine.slow_obs_shape), dtype=torch.uint8))
     engine.push_fast_batch(torch.randn(4, *engine.fast_obs_shape, dtype=torch.bfloat16))
-    actions, fast_aoi_ms, slow_aoi_ms, underruns = engine.sample_actions(cpu=True)
+    actions, fast_age_ms, slow_age_ms, underruns = engine.sample_actions(cpu=True)
 ```
 
-### 2. Custom or Modular `SlowBackbone` × `FastHead`
+### 2. Custom `SlowBackbone` and `FastHead`
 
-Pair any `SlowBackbone` with any compatible `FastHead`:
-
-```python
-from tempo import DirectActionHead, Engine, Pi05Config, Pi05SlowBackbone
-
-slow = Pi05SlowBackbone(Pi05Config(), device="cuda:0")
-fast = DirectActionHead(slow.channel, action_dim=14, chunk_size=50, state_dim=14, hidden_dim=512)
-
-with Engine(slow=slow, fast=fast, num_streams=4, slow_devices=[0], fast_devices=[0]) as engine:
-    ...
-```
-
-To integrate a new model, subclass `SlowBackbone` and `FastHead`:
+Subclass `SlowBackbone` and `FastHead` (or pair a built-in backbone with `DirectActionHead`) and pass them to `Engine(slow=..., fast=...)`:
 
 ```python
-from tempo import DualSystemDeployment, FastHead, ModelRegistry, SlowBackbone, deploy_modules
+from tempo import Engine, FastHead, SlowBackbone
 
 class MySlowBackbone(SlowBackbone):
     def forward(self, obs, ctx):
@@ -131,75 +84,80 @@ class MyFastHead(FastHead):
         chunk[:, :P] = state.splice_prefix(chunk[:, :P], frozen_prefix)
         return chunk  # [B, chunk_size, action_dim]
 
-@ModelRegistry.register("my_policy", "MyPolicy")
-def build_my_policy(config, checkpoint_dir, *, slow_devices, fast_devices, fast_precision="bf16", prompt=None, **kwargs) -> DualSystemDeployment:
-    return deploy_modules(MySlowBackbone(config), MyFastHead(config, fast_precision=fast_precision), slow_devices=slow_devices, fast_devices=fast_devices, prompt=prompt)
+with Engine(slow=MySlowBackbone(), fast=MyFastHead(), num_streams=4) as engine:
+    ...
 ```
 
-### 3. Multi-GPU and Edge-Cloud Examples
+To enable `Engine("org/my-checkpoint")` auto-loading from `config.json`, register a builder with `@ModelRegistry.register("my_policy")`.
+
+### 3. Runnable Examples
 
 ```bash
-python examples/quickstart.py
 python examples/quickstart.py --model lerobot/smolvla_base
 python examples/multi_gpu_serving.py --model nvidia/GR00T-N1.5-3B --topology auto
 ```
 
-See [examples/quickstart.py](./examples/quickstart.py) and [examples/multi_gpu_serving.py](./examples/multi_gpu_serving.py) for `@engine.stage`, `engine.pipeline`, and `RemoteSlowServer` / `RemoteSlowClient` usage.
+See [examples/quickstart.py](./examples/quickstart.py) and [examples/multi_gpu_serving.py](./examples/multi_gpu_serving.py) for `@engine.stage`, `engine.pipeline`, and `RemoteSlowServer` / `RemoteSlowClient`.
+
+## Models
+
+| Checkpoint | System 2 (`SlowBackbone`) | System 1 (`FastHead`) | Params (Active / Total) |
+| :--- | :--- | :--- | :---: |
+| `lerobot/pi05_base` | PaliGemma-2B (`18L`) | Gemma Action Expert (`18L`, 10-step Flow) | 2.83B / 3.3B |
+| `nvidia/GR00T-N1.5-3B` | Eagle2-VLM (`SigLIP + Qwen3-1.7B`) | Cross-Attention DiT (`16L`, 4-step Flow) | 2.09B / 3.0B |
+| `lerobot/smolvla_base` | SmolVLM2 (`SigLIP + Llama-16L`) | SmolLM2 Action Expert (`16L`, 10-step Flow) | 0.36B / 450M |
+
+Fine-tuned checkpoints (such as `lerobot/pi05_libero_finetuned_v044` and `lerobot/smolvla_libero`) load directly without `lerobot` or `transformers`.
 
 ## Benchmarks
 
-Benchmarked against a multi-stream PyTorch `SDPA` baseline (`benchmarks/baselines.py`) under `500 Hz` closed-loop polling. **Max Streams at SLO** is the highest stream count `N` satisfying **`Chunk P99 <= deadline`**, **`Underruns == 0`**, and **`Slow AoI P99 <= 950 ms`**.
+Evaluated against a multi-stream PyTorch `SDPA` + per-stream `RWLock` baseline (`benchmarks/baselines.py`) under 500 Hz polling. **Max Streams at SLO** is the highest stream count meeting `Chunk P99 <= deadline`, `0` underruns, and `Slow staleness P99 <= 950 ms` (the eager PyTorch baseline misses the latency/underrun SLO even at 1 stream). `FP8` Fast heads retain `>0.999` cosine similarity against `BF16` on GR00T-N1.5 and $\pi_{0.5}$, and `>0.993` on SmolVLA.
 
-### 1. Cross-Model &amp; Cross-GPU Scaling
+### 1. Throughput &amp; Latency Across GPUs
 
-| Model (Deadline) | Hardware &amp; Placement | Max Streams at SLO<br>(Tempo vs. Base) | Chunk `P99`<br>(Tempo vs. Base) | Step-Response<br>(Tempo vs. Base) | Peak / Cluster VRAM &amp; FP8 Cosine |
+Placement notation: `Colocated` runs Slow and Fast on each GPU; `1S : 1F` and `1S : 3F` dedicate 1 GPU to Slow VLM and 1 or 3 GPUs to Fast action heads.
+
+| Model (Deadline) | Hardware &amp; Placement | Max Streams at SLO | Chunk `P99` (Tempo vs. PyTorch) | Zero-Underrun Capacity | Peak GPU / Total VRAM |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **`GR00T-N1.5-3B`** (`25 ms`) | `1x H100 SXM` (`Colocated`) | **`8`** vs. `0` | **`22.12 ms`** vs. `150.59 ms` (`6.8x`) | **`54.8 ms`** vs. `147.8 ms` | `3.98 / 3.98 GB` (`0.99994`) |
-| **`GR00T-N1.5-3B`** (`25 ms`) | `2x H100 SXM` (`1S : 1F`) | **`8`** vs. `0` | **`10.38 ms`** vs. `125.59 ms` (`12.1x`) | **`55.1 ms`** vs. `128.0 ms` | `3.23 / 4.73 GB` (`0.99997`) |
-| **`GR00T-N1.5-3B`** (`25 ms`) | **`4x H100 SXM` (`1S : 3F`)** | **`12`** vs. `0` | **`9.56 ms`** vs. `393.81 ms` (**`41.2x`**) | **`56.2 ms`** vs. `555.9 ms` | **`2.67 / 6.95 GB`** (`0.99993`) |
-| **`pi0.5`** (`35 ms`) | `1x RTX 4090` (`Colocated`) | **`1`** vs. `0` | **`23.90 ms`** vs. `271.60 ms` (`11.4x`) | **`169.8 ms`** vs. `1,500 ms` | `5.49 / 5.49 GB` (`0.99926`) |
-| **`pi0.5`** (`30 ms`) | `1x RTX PRO 6000` (`Colocated`) | **`1`** vs. `0` | **`28.82 ms`** vs. `394.92 ms` (`13.7x`) | **`66.9 ms`** vs. `1,500 ms` | `6.10 / 6.10 GB` (`0.99992`) |
-| **`pi0.5`** (`30 ms`) | `2x RTX PRO 6000` (`1S : 1F`) | **`1`** vs. `0` | **`23.71 ms`** vs. `381.87 ms` (`16.1x`) | **`65.9 ms`** vs. `1,500 ms` | `5.35 / 6.63 GB` (`0.99992`) |
-| **`pi0.5`** (`30 ms`) | `1x H100 SXM` (`Colocated`) | **`1`** vs. `0` | **`28.31 ms`** vs. `457.39 ms` (`16.2x`) | **`64.9 ms`** vs. `1,500 ms` | `6.15 / 6.15 GB` (`0.99992`) |
-| **`pi0.5`** (`30 ms`) | `2x H100 SXM` (`1S : 1F`) | **`1`** vs. `0` | **`20.76 ms`** vs. `423.56 ms` (`20.4x`) | **`65.8 ms`** vs. `1,500 ms` | `5.85 / 7.18 GB` (`0.99993`) |
-| **`SmolVLA`** (`25 ms`) | `1x RTX 4090` (`Colocated`) | **`8`** vs. `0` | **`24.36 ms`** vs. `136.06 ms` (`5.6x`) | `9.46 ms` @ `N=1` | **`0.89 / 0.89 GB`** (`0.99339`) |
-| **`SmolVLA`** (`25 ms`) | `1x RTX PRO 6000` (`Colocated`) | **`12`** vs. `0` | **`24.11 ms`** vs. `360.54 ms` (`15.0x`) | `16.27 ms` @ `N=1` | `1.19 / 1.19 GB` (`0.99455`) |
-| **`SmolVLA`** (`25 ms`) | `2x RTX PRO 6000` (`1S : 1F`) | **`12`** vs. `0` | **`22.98 ms`** vs. `292.08 ms` (`12.7x`) | `12.35 ms` @ `N=1` | `1.05 / 1.53 GB` (`0.99446`) |
+| `GR00T-N1.5-3B` (25 ms) | `4x H100 SXM` (`1S : 3F`) | **12** | **9.56 ms** vs. 393.8 ms (41.2x) | 48 streams (13.3 ms P99) | 2.67 / 6.95 GB |
+| `GR00T-N1.5-3B` (25 ms) | `2x H100 SXM` (`1S : 1F`) | **8** | **10.38 ms** vs. 125.6 ms (12.1x) | 32 streams | 3.23 / 4.73 GB |
+| `GR00T-N1.5-3B` (25 ms) | `1x H100 SXM` (`Colocated`) | **8** | **22.12 ms** vs. 150.6 ms (6.8x) | 32 streams (24.6 ms P99) | 3.98 / 3.98 GB |
+| `pi0.5` (30 ms) | `2x H100 SXM` (`1S : 1F`) | **1** | **20.76 ms** vs. 423.6 ms (20.4x) | 2 streams | 5.85 / 7.18 GB |
+| `pi0.5` (30 ms) | `1x H100 SXM` (`Colocated`) | **1** | **28.31 ms** vs. 457.4 ms (16.2x) | 2 streams | 6.15 / 6.15 GB |
+| `pi0.5` (30 ms) | `2x RTX PRO 6000` (`1S : 1F`) | **1** | **23.71 ms** vs. 381.9 ms (16.1x) | 2 streams | 5.35 / 6.63 GB |
+| `pi0.5` (30 ms) | `1x RTX PRO 6000` (`Colocated`) | **1** | **28.82 ms** vs. 394.9 ms (13.7x) | 2 streams | 6.10 / 6.10 GB |
+| `pi0.5` (35 ms) | `1x RTX 4090` (`Colocated`) | **1** | **23.90 ms** vs. 271.6 ms (11.4x) | 2 streams | 5.49 / 5.49 GB |
+| `SmolVLA` (25 ms) | `2x RTX PRO 6000` (`1S : 1F`) | **12** | **22.98 ms** vs. 292.1 ms (12.7x) | 16 streams | 1.05 / 1.53 GB |
+| `SmolVLA` (25 ms) | `1x RTX PRO 6000` (`Colocated`) | **12** | **24.11 ms** vs. 360.5 ms (15.0x) | 16 streams | 1.19 / 1.19 GB |
+| `SmolVLA` (25 ms) | `1x RTX 4090` (`Colocated`) | **8** | **24.36 ms** vs. 136.1 ms (5.6x) | 12 streams | 0.89 / 0.89 GB |
 
-### 2. 4-GPU Placement Comparison (`lerobot/pi05_base`, `N = 4` Streams)
+### 2. 4-GPU Placement Trade-Offs (`lerobot/pi05_base`, 4 Concurrent Streams)
 
-Disaggregating Slow/Fast GPUs (`1S : 3F`) or pipelining the Slow VLM (`1xPP(2)S : 2F`) cuts cluster VRAM by `45%–59%` while keeping `0` underruns across both NVLink and PCIe systems:
+All Tempo placements below run with `0` underruns. Disaggregating Slow/Fast GPUs (`1S : 3F`) or 2-stage Slow pipeline parallelism (`slow=[[0,1]], fast=[2,3]`) cuts total VRAM by `45%–59%` on both NVLink and PCIe hosts:
 
-#### `4x NVIDIA H100 80GB SXM` (NVLink)
+| Placement (`N = 4`) | `4x H100 SXM` Chunk `P50 / P99` | `4x H100` Peak / Total VRAM | `4x RTX PRO 6000` Chunk `P50 / P99` | `4x RTX PRO 6000` Peak / Total VRAM |
+| :--- | :---: | :---: | :---: | :---: |
+| `4x Colocated` (`slow=[0..3], fast=[0..3]`) | **20.55 / 26.82 ms** | 5.89 / 23.55 GB | **22.12 / 28.76 ms** | 5.84 / 23.35 GB |
+| `2S : 2F` (`slow=[0,1], fast=[2,3]`) | 20.38 / 36.88 ms | 5.85 / 15.69 GB | 23.48 / 42.45 ms | 5.35 / 13.68 GB |
+| `1S : 3F` (`slow=[0], fast=[1,2,3]`) | 20.57 / 36.83 ms | 6.42 / **12.68 GB (-46%)** | 22.18 / 39.74 ms | 5.72 / **9.76 GB (-58%)** |
+| `2-Stage PP + 2F` (`slow=[[0,1]], fast=[2,3]`) | 20.40 / 36.40 ms | **4.33** / 12.95 GB (-45%) | 22.18 / 39.68 ms | **3.53** / **9.50 GB (-59%)** |
 
-| Placement (`N=4`) | Chunk `P50 / P99`<br>(Tempo vs. Base `P99`) | Underruns<br>(Tempo vs. Base) | Step-Response<br>(Tempo vs. Base) | Closed-Loop Success<br>(Tempo vs. Base) | Cluster / Peak VRAM |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **`4x Colocated`** (`slow=[0..3], fast=[0..3]`) | **`20.55 / 26.82 ms`** vs. `2,943.4 ms` | **`0`** vs. `20` | **`65.4 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | `23.55 / 5.89 GB` |
-| `2S : 2F` (`slow=[0,1], fast=[2,3]`) | `20.38 / 36.88 ms` vs. `1,431.1 ms` | **`0`** vs. `748` | **`65.4 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | `15.69 / 5.85 GB` |
-| **`1S : 3F`** (`slow=[0], fast=[1,2,3]`) | `20.57 / 36.83 ms` vs. `2,320.8 ms` | **`0`** vs. `109` | **`66.6 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | **`12.68 / 6.42 GB` (`-46%`)** |
-| **`1xPP(2)S : 2F`** (`slow=[[0,1]], fast=[2,3]`) | `20.40 / 36.40 ms` vs. `804.3 ms` | **`0`** vs. `1,833` | **`64.9 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | **`12.95 / 4.33 GB` (`-45%`)** |
+### 3. Closed-Loop Simulation Sanity Check (LIBERO MuJoCo, `1x RTX 4090`)
 
-#### `4x NVIDIA RTX PRO 6000 Blackwell` (PCIe)
+End-to-end closed-loop rollouts through `tempo.Engine` (`benchmarks/libero_e2e_eval.json`, 30 Hz control loop, `0` underruns across all episodes, `~200 µs` `sample_actions` P50):
 
-| Placement (`N=4`) | Chunk `P50 / P99`<br>(Tempo vs. Base `P99`) | Underruns<br>(Tempo vs. Base) | Step-Response<br>(Tempo vs. Base) | Closed-Loop Success<br>(Tempo vs. Base) | Cluster / Peak VRAM |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **`4x Colocated`** (`slow=[0..3], fast=[0..3]`) | **`22.12 / 28.76 ms`** vs. `2,676.6 ms` | **`0`** vs. `35` | **`67.4 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | `23.35 / 5.84 GB` |
-| `2S : 2F` (`slow=[0,1], fast=[2,3]`) | `23.48 / 42.45 ms` vs. `1,198.5 ms` | **`0`** vs. `939` | **`67.3 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | `13.68 / 5.35 GB` |
-| **`1S : 3F`** (`slow=[0], fast=[1,2,3]`) | `22.18 / 39.74 ms` vs. `1,681.5 ms` | **`0`** vs. `461` | **`66.3 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | **`9.76 / 5.72 GB` (`-58%`)** |
-| **`1xPP(2)S : 2F`** (`slow=[[0,1]], fast=[2,3]`) | `22.18 / 39.68 ms` vs. `1,445.6 ms` | **`0`** vs. `755` | **`66.3 ms`** vs. `1,500 ms` | **`100.0%`** vs. `0.0%` | **`9.50 / 3.53 GB` (`-59%`)** |
+| Suite | Task | `pi05_libero_finetuned_v044` (3.3B) | `smolvla_libero` (450M) |
+| :--- | :--- | :---: | :---: |
+| `libero_spatial` | Pick up the black bowl between the plate and ramekin and place it on the plate | Pass (83 steps) | Fail (220 steps) |
+| `libero_object` | Pick up the alphabet soup and place it in the basket | Pass (137 steps) | Pass (143 steps) |
+| `libero_goal` | Open the middle drawer of the cabinet | Pass (129 steps) | Pass (200 steps) |
 
 ### Reproduce
 
 ```bash
-# Single-GPU colocated
 python -m benchmarks.run_suite --model lerobot/smolvla_base --mode colocated --deadline-ms 25 --streams 1,4,8,12,16
-python -m benchmarks.run_suite --model lerobot/pi05_base --mode colocated --deadline-ms 35 --streams 1,2,4,8
-
-# Disaggregated 1S:1F & 1S:3F scaling
 python -m benchmarks.run_suite --model nvidia/GR00T-N1.5-3B --mode both --deadline-ms 25 --streams 1,4,8,16,24,32
 python -m benchmarks.run_suite --model nvidia/GR00T-N1.5-3B --mode custom --slow-devices 0 --fast-devices 1,2,3 --deadline-ms 25 --streams 4,12,24,32,42,48
-
-# 4-GPU placement matrix (Colocated, 2S:2F, 1S:3F, 1xPP(2)S:2F)
 python -m benchmarks.run_suite --model lerobot/pi05_base --mode four_gpu_matrix --deadline-ms 30 --streams 4,8,12,16,24,32
 ```
 
