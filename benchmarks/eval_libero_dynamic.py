@@ -1070,6 +1070,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["smoke", "full"], default="full")
     parser.add_argument("--dyn-repo", type=pathlib.Path, required=True, help="Path to cloned LIBERO-Dynamic repository")
+    parser.add_argument("--streams", type=str, default="1", help="Comma-separated concurrent stream counts")
     parser.add_argument("--log-dir", type=pathlib.Path, default=pathlib.Path("/tmp/inspect_logs"))
     parser.add_argument("--out-json", type=pathlib.Path, default=pathlib.Path("benchmarks/libero_dynamic_eval.json"))
     args = parser.parse_args()
@@ -1081,12 +1082,12 @@ def main() -> None:
     _, pi05_dir = resolve_checkpoint("lerobot/pi05_libero_finetuned_v044")
     pi05_helper = ModelPreprocHelper(pi05_dir)
 
+    stream_counts = tuple(int(x.strip()) for x in args.streams.split(",") if x.strip())
     if args.mode == "smoke":
         candidate_tasks = [("libero_spatial", 0), ("libero_object", 0)]
         static_inits = [0]
         dyn_trajs = [0]
         max_steps = 240
-        stream_counts = (1,)
     else:
         candidate_tasks = [
             ("libero_spatial", 0),
@@ -1097,7 +1098,6 @@ def main() -> None:
         static_inits = [0, 1, 2]
         dyn_trajs = [0, 1]
         max_steps = 260
-        stream_counts = (1, 2)
 
     levels = ["l1", "l2", "l3"]
     dyn_args, items_by_id, static_scenes, dyn_scenes_by_level = build_static_and_dynamic_scenes(
