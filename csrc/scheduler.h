@@ -119,7 +119,10 @@ class TimeAwareScheduler {
       int64_t t_query_ns, bool return_cpu = false);
   RTCStats rtc_stats() const;
   SchedulerTelemetry telemetry() const;
-  int64_t now_ns() const { return steady_now_ns(); }
+  void pause_clock();
+  void resume_clock();
+  bool is_clock_paused() const;
+  int64_t now_ns() const;
 
   void note_expected_slow_obs(int32_t stream_id, int64_t t_obs_ns) {
     if (stream_id < 0 || stream_id >= num_streams_) {
@@ -210,6 +213,7 @@ class TimeAwareScheduler {
     std::vector<cudaEvent_t> fast_caller_events;
     std::vector<cudaEvent_t> fast_ingest_events;
     std::vector<cudaEvent_t> fast_consumed_events;
+    cudaEvent_t fast_start_event{nullptr};
     cudaEvent_t fast_done_event{nullptr};
 
     int32_t* h_fast_local_ids{nullptr};
@@ -296,7 +300,6 @@ class TimeAwareScheduler {
     cudaEvent_t tobs_h2d_done_event{nullptr};
     cudaEvent_t slice_start_event{nullptr};
     cudaEvent_t slice_done_event{nullptr};
-    cudaEvent_t exec_done_event{nullptr};
     cudaEvent_t act_out_copied_event{nullptr};
     cudaEvent_t tsc_d2h_done_event{nullptr};
 
@@ -387,6 +390,9 @@ class TimeAwareScheduler {
     return dst_dev == src_dev || verified_p2p_pairs_.count({dst_dev, src_dev}) > 0;
   }
 
+  void wait_if_clock_paused();
+  void wait_until_logical_ns(int64_t target_ns);
+
   int32_t num_streams_;
   int32_t num_slow_stages_;
   int32_t slow_batch_size_;
@@ -409,6 +415,12 @@ class TimeAwareScheduler {
   std::vector<std::unique_ptr<SlowReplica>> slow_replicas_;
 
   std::atomic<bool> running_{false};
+  mutable std::mutex clock_mu_;
+  std::condition_variable clock_cv_;
+  std::atomic<bool> clock_ever_paused_{false};
+  std::atomic<bool> clock_paused_{false};
+  int64_t clock_pause_start_ns_{0};
+  int64_t clock_paused_accum_ns_{0};
   mutable std::mutex telem_mu_;
   SchedulerTelemetry telem_;
 };

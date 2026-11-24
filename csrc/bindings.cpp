@@ -454,6 +454,9 @@ PYBIND11_MODULE(_tempo_C, m) {
       .def("all_streams_slow_settled", &TimeAwareScheduler::all_streams_slow_settled)
       .def("all_streams_fast_committed_since", &TimeAwareScheduler::all_streams_fast_committed_since)
       .def("max_staged_splice_ns", &TimeAwareScheduler::max_staged_splice_ns)
+      .def("pause_clock", &TimeAwareScheduler::pause_clock)
+      .def("resume_clock", &TimeAwareScheduler::resume_clock)
+      .def("is_clock_paused", &TimeAwareScheduler::is_clock_paused)
       .def("now_ns", &TimeAwareScheduler::now_ns);
 }
 

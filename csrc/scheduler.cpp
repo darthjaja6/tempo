@@ -209,7 +209,6 @@ TimeAwareScheduler::TimeAwareScheduler(
         TS_SCHED_CUDA_CHECK(cudaEventCreate(&stg->slice_start_event));
         TS_SCHED_CUDA_CHECK(cudaEventCreate(&stg->slice_done_event));
         TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&stg->tobs_h2d_done_event, cudaEventDisableTiming));
-        TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&stg->exec_done_event, cudaEventDisableTiming));
         TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&stg->act_out_copied_event, cudaEventDisableTiming));
         TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&stg->tsc_d2h_done_event, cudaEventDisableTiming));
         TS_SCHED_CUDA_CHECK(cudaMallocHost(&stg->h_slow_tobs, sizeof(int64_t) * slow_batch_size_));
@@ -279,7 +278,7 @@ TimeAwareScheduler::TimeAwareScheduler(
   slow_replica_of_.resize(num_streams_);
   local_slow_id_.resize(num_streams_);
   ingress_.reserve(num_streams_);
-  const int64_t init_ns = steady_now_ns();
+  const int64_t init_ns = now_ns();
 
   for (int32_t s = 0; s < num_streams_; ++s) {
     auto ing = std::make_unique<StreamIngress>();
@@ -315,7 +314,8 @@ TimeAwareScheduler::TimeAwareScheduler(
       TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&fs.fast_ingest_events[i], cudaEventDisableTiming));
       TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&fs.fast_consumed_events[i], cudaEventDisableTiming));
     }
-    TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&fs.fast_done_event, cudaEventDisableTiming));
+    TS_SCHED_CUDA_CHECK(cudaEventCreate(&fs.fast_start_event));
+    TS_SCHED_CUDA_CHECK(cudaEventCreate(&fs.fast_done_event));
     TS_SCHED_CUDA_CHECK(cudaMallocHost(&fs.h_fast_local_ids, sizeof(int32_t) * max_fast_batch_size_));
     TS_SCHED_CUDA_CHECK(cudaMallocHost(&fs.h_fast_tobs, sizeof(int64_t) * max_fast_batch_size_));
     TS_SCHED_CUDA_CHECK(cudaMallocHost(&fs.h_fast_slow_tobs, sizeof(int64_t) * max_fast_batch_size_));
@@ -382,7 +382,6 @@ TimeAwareScheduler::~TimeAwareScheduler() {
         if (stg->slice_start_event) cudaEventDestroy(stg->slice_start_event);
         if (stg->slice_done_event) cudaEventDestroy(stg->slice_done_event);
         if (stg->tobs_h2d_done_event) cudaEventDestroy(stg->tobs_h2d_done_event);
-        if (stg->exec_done_event) cudaEventDestroy(stg->exec_done_event);
         if (stg->act_out_copied_event) cudaEventDestroy(stg->act_out_copied_event);
         if (stg->tsc_d2h_done_event) cudaEventDestroy(stg->tsc_d2h_done_event);
         if (stg->h_slow_tobs) cudaFreeHost(stg->h_slow_tobs);
@@ -405,6 +404,7 @@ TimeAwareScheduler::~TimeAwareScheduler() {
     for (auto ev : fs->fast_caller_events) cudaEventDestroy(ev);
     for (auto ev : fs->fast_ingest_events) cudaEventDestroy(ev);
     for (auto ev : fs->fast_consumed_events) cudaEventDestroy(ev);
+    if (fs->fast_start_event) cudaEventDestroy(fs->fast_start_event);
     if (fs->fast_done_event) cudaEventDestroy(fs->fast_done_event);
     if (fs->h_fast_local_ids) cudaFreeHost(fs->h_fast_local_ids);
     if (fs->h_fast_tobs) cudaFreeHost(fs->h_fast_tobs);
@@ -943,7 +943,7 @@ bool TimeAwareScheduler::submit_remote_hidden(int32_t stream_id, int64_t t_obs_n
     throw;
   }
 
-  const int64_t pub_now = steady_now_ns();
+  const int64_t pub_now = now_ns();
   uint64_t dropped_fast = 0;
   {
     std::lock_guard<std::mutex> ilk(ingress_[stream_id]->mu);
@@ -1040,6 +1040,10 @@ void TimeAwareScheduler::start() {
 
 void TimeAwareScheduler::stop() {
   if (!running_.exchange(false, std::memory_order_seq_cst)) return;
+  {
+    std::lock_guard<std::mutex> clk(clock_mu_);
+  }
+  clock_cv_.notify_all();
 
   for (auto& rep : slow_replicas_) {
     for (auto& edge : rep->edges) {
@@ -1118,7 +1122,8 @@ void TimeAwareScheduler::reset_all_streams(c10::optional<torch::Tensor> init_pos
     }
   }
 
-  const int64_t now = steady_now_ns();
+  resume_clock();
+  const int64_t now = now_ns();
   for (int32_t s = 0; s < num_streams_; ++s) {
     std::lock_guard<std::mutex> lk(ingress_[s]->mu);
     ingress_[s]->slow_pending = false;
@@ -1263,6 +1268,67 @@ SchedulerTelemetry TimeAwareScheduler::telemetry() const {
   return telem_;
 }
 
+void TimeAwareScheduler::pause_clock() {
+  std::lock_guard<std::mutex> lk(clock_mu_);
+  if (!clock_paused_.load(std::memory_order_relaxed)) {
+    clock_pause_start_ns_ = steady_now_ns();
+    clock_ever_paused_.store(true, std::memory_order_release);
+    clock_paused_.store(true, std::memory_order_release);
+  }
+}
+
+void TimeAwareScheduler::resume_clock() {
+  {
+    std::lock_guard<std::mutex> lk(clock_mu_);
+    if (clock_paused_.load(std::memory_order_relaxed)) {
+      clock_paused_accum_ns_ += std::max<int64_t>(0, steady_now_ns() - clock_pause_start_ns_);
+      clock_paused_.store(false, std::memory_order_release);
+    }
+  }
+  clock_cv_.notify_all();
+}
+
+bool TimeAwareScheduler::is_clock_paused() const {
+  return clock_paused_.load(std::memory_order_acquire);
+}
+
+int64_t TimeAwareScheduler::now_ns() const {
+  if (!clock_ever_paused_.load(std::memory_order_acquire)) {
+    return steady_now_ns();
+  }
+  std::lock_guard<std::mutex> lk(clock_mu_);
+  const int64_t raw = clock_paused_.load(std::memory_order_relaxed) ? clock_pause_start_ns_ : steady_now_ns();
+  return raw - clock_paused_accum_ns_;
+}
+
+void TimeAwareScheduler::wait_if_clock_paused() {
+  if (!clock_paused_.load(std::memory_order_acquire)) return;
+  std::unique_lock<std::mutex> lk(clock_mu_);
+  clock_cv_.wait(lk, [&]() {
+    return !clock_paused_.load(std::memory_order_relaxed) || !running_.load(std::memory_order_relaxed);
+  });
+}
+
+void TimeAwareScheduler::wait_until_logical_ns(int64_t target_ns) {
+  if (!clock_ever_paused_.load(std::memory_order_acquire)) return;
+  while (running_.load(std::memory_order_relaxed)) {
+    int64_t rem_ns = 0;
+    {
+      std::unique_lock<std::mutex> lk(clock_mu_);
+      if (!clock_paused_.load(std::memory_order_relaxed)) {
+        rem_ns = target_ns - (steady_now_ns() - clock_paused_accum_ns_);
+        if (rem_ns <= 0) return;
+      } else {
+        clock_cv_.wait(lk, [&]() {
+          return !clock_paused_.load(std::memory_order_relaxed) || !running_.load(std::memory_order_relaxed);
+        });
+        continue;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::nanoseconds(std::min<int64_t>(rem_ns, 200000)));
+  }
+}
+
 TimeAwareScheduler::FastBatchPlan TimeAwareScheduler::plan_fast_batch(
     FastShard& fs, std::vector<FastReq>& pending_fast, int64_t now_ns) {
   const int32_t local_n = static_cast<int32_t>(fs.global_stream_ids.size());
@@ -1344,6 +1410,7 @@ void TimeAwareScheduler::execute_fast_batch(
   const int64_t t_step_start_ns = steady_now_ns();
   std::vector<int32_t> batch_local_streams(chosen_bucket, pending_fast[0].local_id);
   std::vector<int64_t> batch_tnow(chosen_bucket, now_ns);
+  TS_SCHED_CUDA_CHECK(cudaEventRecord(fs.fast_start_event, raw_exec));
 
   for (int32_t i = 0; i < take_fast_count; ++i) {
     const int32_t l_s = pending_fast[i].local_id;
@@ -1421,8 +1488,15 @@ void TimeAwareScheduler::execute_fast_batch(
     std::this_thread::sleep_for(std::chrono::microseconds(15));
   }
   fs.tsc->reclaim_retired_reads();
+  const int64_t t_pre_wait_ns = steady_now_ns();
 
-  const int64_t t_done_ns = steady_now_ns();
+  float fast_ms = 0.0f;
+  TS_SCHED_CUDA_CHECK(cudaEventElapsedTime(&fast_ms, fs.fast_start_event, fs.fast_done_event));
+  const int64_t gpu_exec_ns = static_cast<int64_t>(fast_ms * 1e6);
+  wait_until_logical_ns(now_ns + gpu_exec_ns);
+  if (!running_.load(std::memory_order_relaxed)) return;
+  const int64_t t_post_wait_ns = steady_now_ns();
+  const int64_t t_done_ns = this->now_ns();
   auto out_slice = fs.fast_out_static.slice(0, 0, take_fast_count);
   fs.rtc->commit_chunks(
       fs.d_fast_local_ids,
@@ -1440,7 +1514,7 @@ void TimeAwareScheduler::execute_fast_batch(
         std::max(ingress_[g_s]->last_committed_fast_t_obs_ns, fs.h_fast_tobs[i]);
   }
 
-  const int64_t obs_fast_ns = steady_now_ns() - t_step_start_ns;
+  const int64_t obs_fast_ns = (t_pre_wait_ns - t_step_start_ns) + (steady_now_ns() - t_post_wait_ns);
   int64_t& est_ref = fs.runtime_bucket_exec_ns[chosen_bucket];
   if (obs_fast_ns > est_ref) {
     est_ref = (est_ref * 2 + obs_fast_ns) / 3;
@@ -1475,6 +1549,7 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
 
   bool slow_batch_active = false;
   bool slice_gpu_inflight = false;
+  int64_t slice_launch_logical_ns = 0;
   int32_t consec_slow_slices = 0;
   int32_t active_slow_bucket = stg.sorted_slow_buckets.front();
   size_t cur_slice_idx = 0;
@@ -1504,10 +1579,12 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
       }
       slice_gpu_inflight = false;
       cur_slice_idx++;
+      wait_until_logical_ns(slice_launch_logical_ns + obs_slice_ns);
+      if (!running_.load(std::memory_order_relaxed)) break;
 
       const auto& cur_slices = stg.slow_bucket_slice_graphs[active_slow_bucket];
       if (cur_slice_idx == cur_slices.size()) {
-        const int64_t pub_now = steady_now_ns();
+        const int64_t pub_now = this->now_ns();
         uint64_t dropped_fast = 0;
         for (int32_t i = 0; i < real_slow_count; ++i) {
           const int32_t l_s = active_slow_local_ids[i];
@@ -1532,7 +1609,9 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
     }
 
     fs.tsc->reclaim_retired_reads();
-    const int64_t now_ns = steady_now_ns();
+    wait_if_clock_paused();
+    if (!running_.load(std::memory_order_relaxed)) break;
+    const int64_t now_ns = this->now_ns();
 
     std::vector<FastReq> pending_fast;
     pending_fast.reserve(local_n);
@@ -1716,6 +1795,7 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
     }
 
     if (allow_slow_slice && slow_batch_active && !slice_gpu_inflight) {
+      slice_launch_logical_ns = this->now_ns();
       TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.slice_start_event, raw_exec));
       stg.slow_bucket_slice_graphs[active_slow_bucket][cur_slice_idx]->replay();
       TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.slice_done_event, raw_exec));
@@ -1756,7 +1836,9 @@ void TimeAwareScheduler::fast_disagg_shard_loop(int32_t shard_idx) {
 
   while (running_.load(std::memory_order_relaxed)) {
     fs.tsc->reclaim_retired_reads();
-    const int64_t now_ns = steady_now_ns();
+    wait_if_clock_paused();
+    if (!running_.load(std::memory_order_relaxed)) break;
+    const int64_t now_ns = this->now_ns();
 
     pending_fast.clear();
     for (int32_t i = 0; i < local_n; ++i) {
@@ -1812,11 +1894,13 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
   }
 
   while (running_.load(std::memory_order_relaxed)) {
+    wait_if_clock_paused();
+    if (!running_.load(std::memory_order_relaxed)) break;
     PipelinePacket pkt;
 
     // 1. Acquire microbatch packet (entry AoI queue on stage 0, or upstream handoff edge on stage > 0)
     if (stage_idx == 0) {
-      const int64_t now_ns = steady_now_ns();
+      const int64_t now_ns = this->now_ns();
       cands.clear();
       for (int32_t i = 0; i < local_r_n; ++i) {
         const int32_t g_s = rep.global_stream_ids[i];
@@ -1970,6 +2054,8 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
         TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.tobs_h2d_done_event, raw_exec));
       }
 
+      const int64_t stg_start_logical_ns = this->now_ns();
+      TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.slice_start_event, raw_exec));
       const auto& graphs = stg.slow_bucket_slice_graphs[pkt.chosen_slow_bkt];
       for (const auto& g : graphs) {
         g->replay();
@@ -1981,12 +2067,20 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
               pkt.local_slow_ids[i], src_slots[i], pkt.tobs_ns[i], slow_frame_seq_len_, raw_exec);
         }
       }
-      TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.exec_done_event, raw_exec));
+      TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.slice_done_event, raw_exec));
       while (true) {
-        cudaError_t st = cudaEventQuery(stg.exec_done_event);
+        cudaError_t st = cudaEventQuery(stg.slice_done_event);
         if (st == cudaSuccess) break;
         if (st != cudaErrorNotReady) TS_SCHED_CUDA_CHECK(st);
         std::this_thread::sleep_for(std::chrono::microseconds(20));
+      }
+      float stg_ms = 0.0f;
+      TS_SCHED_CUDA_CHECK(cudaEventElapsedTime(&stg_ms, stg.slice_start_event, stg.slice_done_event));
+      wait_until_logical_ns(stg_start_logical_ns + static_cast<int64_t>(stg_ms * 1e6));
+      if (!running_.load(std::memory_order_relaxed)) {
+        abort_packet_writes(rep, pkt);
+        push_pkt_slot(rep, pkt.pkt_slot);
+        break;
       }
     }
 
@@ -2186,7 +2280,7 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
         }
         pkt.dst_slots_allocated = false;
 
-        const int64_t pub_now = steady_now_ns();
+        const int64_t pub_now = this->now_ns();
         uint64_t dropped_fast = 0;
         for (int32_t i = 0; i < pkt.real_slow_count; ++i) {
           const int32_t g_s = pkt.global_ids[i];

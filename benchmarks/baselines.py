@@ -277,12 +277,17 @@ class PyTorchDualStreamBaseline:
             for pipe in self.active_slow_devs
         ]
 
+        self._clock_cv = threading.Condition(threading.Lock())
+        self._clock_paused = False
+        self._clock_pause_start_ns = 0
+        self._clock_paused_accum_ns = 0
+
         # Per-stream dense Slow state protected by per-stream mutexes
         self.stream_locks = [threading.Lock() for _ in range(num_streams)]
         self.kv_packed: List[torch.Tensor] = []
         self.hidden_packed: List[torch.Tensor] = []
         self.state_t_obs: List[int] = []
-        now_ns = time.monotonic_ns()
+        now_ns = self.now_ns()
         S = channel.frame_seq_len
         for s in range(num_streams):
             f_dev = torch.device(f"cuda:{self.active_fast_devs[self.fast_shard_of[s]]}")
@@ -370,6 +375,40 @@ class PyTorchDualStreamBaseline:
         self.commit_hard_underruns = 0
         self.lock_wait_ms: List[float] = []
 
+    def pause_clock(self) -> None:
+        with self._clock_cv:
+            if not self._clock_paused:
+                self._clock_pause_start_ns = time.monotonic_ns()
+                self._clock_paused = True
+
+    def resume_clock(self) -> None:
+        with self._clock_cv:
+            if self._clock_paused:
+                self._clock_paused_accum_ns += max(0, time.monotonic_ns() - self._clock_pause_start_ns)
+                self._clock_paused = False
+            self._clock_cv.notify_all()
+
+    def now_ns(self) -> int:
+        with self._clock_cv:
+            raw = self._clock_pause_start_ns if self._clock_paused else time.monotonic_ns()
+            return raw - self._clock_paused_accum_ns
+
+    def _wait_if_clock_paused(self) -> None:
+        with self._clock_cv:
+            self._clock_cv.wait_for(lambda: not self._clock_paused or not self.running)
+
+    def _wait_until_logical_ns(self, target_ns: int) -> None:
+        while self.running:
+            with self._clock_cv:
+                if not self._clock_paused:
+                    rem_ns = target_ns - (time.monotonic_ns() - self._clock_paused_accum_ns)
+                    if rem_ns <= 0:
+                        return
+                else:
+                    self._clock_cv.wait_for(lambda: not self._clock_paused or not self.running)
+                    continue
+            time.sleep(min(rem_ns * 1e-9, 0.0005))
+
     def start(self) -> None:
         self.running = True
         self._threads.clear()
@@ -384,9 +423,39 @@ class PyTorchDualStreamBaseline:
 
     def stop(self) -> None:
         self.running = False
+        with self._clock_cv:
+            self._clock_cv.notify_all()
         for t in self._threads:
             t.join(timeout=5.0)
         self._threads.clear()
+
+    def reset(self) -> None:
+        was_running = self.running
+        if was_running:
+            self.stop()
+        self.resume_clock()
+        now_ns = self.now_ns()
+        for r in range(self.R):
+            with self.slow_q_locks[r]:
+                self.pending_slow[r].clear()
+        for f in range(self.F):
+            with self.fast_q_locks[f]:
+                self.pending_fast[f].clear()
+            f_dev = torch.device(f"cuda:{self.active_fast_devs[f]}")
+            with self.act_locks[f], torch.cuda.device(f_dev), torch.cuda.stream(self.sample_streams[f]):
+                self.active_valid_gpu[f].zero_()
+                self.active_t_obs_gpu[f].zero_()
+                self.active_slow_t_obs_gpu[f].fill_(now_ns)
+            self.sample_streams[f].synchronize()
+        for s in range(self.num_streams):
+            with self.stream_locks[s]:
+                self.state_t_obs[s] = 0
+        with self.stats_lock:
+            self.active_t_obs = [0 for _ in range(self.num_streams)]
+            self.active_valid = [False for _ in range(self.num_streams)]
+            self.commit_hard_underruns = 0
+        if was_running:
+            self.start()
 
     def _copy_tensor_to_dev(
         self, src: torch.Tensor, dst_dev_id: int, dst_stream: torch.cuda.Stream
@@ -413,7 +482,7 @@ class PyTorchDualStreamBaseline:
         t_obs_ns: Optional[int] = None,
     ) -> int:
         if t_obs_ns is None:
-            t_obs_ns = time.monotonic_ns()
+            t_obs_ns = self.now_ns()
         r = self.slow_rep_of[stream_id]
         dst_dev_id = self.active_slow_devs[r][0]
         ing_st = self.slow_ingest_streams[r]
@@ -432,7 +501,7 @@ class PyTorchDualStreamBaseline:
         t_obs_ns: Optional[int] = None,
     ) -> int:
         if t_obs_ns is None:
-            t_obs_ns = time.monotonic_ns()
+            t_obs_ns = self.now_ns()
         f = self.fast_shard_of[stream_id]
         dst_dev_id = self.active_fast_devs[f]
         ing_st = self.fast_ingest_streams[f]
@@ -506,6 +575,9 @@ class PyTorchDualStreamBaseline:
         pipe_streams = self.slow_stage_streams[r]
 
         while self.running:
+            self._wait_if_clock_paused()
+            if not self.running:
+                break
             batch_items = []
             with self.slow_q_locks[r]:
                 if self.pending_slow[r]:
@@ -519,6 +591,8 @@ class PyTorchDualStreamBaseline:
             s_ids = [x[0] for x in batch_items]
             t_obs_list = [x[1] for x in batch_items]
             stage_ctxs: List[Tuple[int, EagerCaptureContext]] = []
+            t_launch_logical = self.now_ns()
+            gpu_exec_ns = 0
 
             with torch.no_grad():
                 dev0 = torch.device(f"cuda:{pipe_devs[0]}")
@@ -544,10 +618,19 @@ class PyTorchDualStreamBaseline:
                                 h = h_cpu.to(p_dev, non_blocking=False)
 
                     with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
+                        ev0 = torch.cuda.Event(enable_timing=True)
+                        ev1 = torch.cuda.Event(enable_timing=True)
+                        ev0.record(p_st)
                         ctx = EagerCaptureContext(self.channel, p_dev)
                         h = pipe_mods[p](h, ctx)
+                        ev1.record(p_st)
                         p_st.synchronize()
+                        gpu_exec_ns += int(ev0.elapsed_time(ev1) * 1e6)
                         stage_ctxs.append((p_dev_id, ctx))
+
+            self._wait_until_logical_ns(t_launch_logical + gpu_exec_ns)
+            if not self.running:
+                break
 
             for idx, s in enumerate(s_ids):
                 f = self.fast_shard_of[s]
@@ -583,7 +666,7 @@ class PyTorchDualStreamBaseline:
                         cp_st.synchronize()
                         self.state_t_obs[s] = t_obs_list[idx]
 
-                t_done = time.monotonic_ns()
+                t_done = self.now_ns()
                 with self.stats_lock:
                     self.slow_latency_ms.append((t_done - t_obs_list[idx]) * 1e-6)
 
@@ -595,6 +678,9 @@ class PyTorchDualStreamBaseline:
         expert = self.fast_experts[f_dev_id]
 
         while self.running:
+            self._wait_if_clock_paused()
+            if not self.running:
+                break
             batch_items = []
             with self.fast_q_locks[f]:
                 if self.pending_fast[f]:
@@ -609,18 +695,23 @@ class PyTorchDualStreamBaseline:
             s_ids = [x[0] for x in batch_items]
             t_obs_list = [x[1] for x in batch_items]
 
-            t_lk0 = time.monotonic_ns()
+            t_lk0 = self.now_ns()
             ordered_unique = sorted(set(s_ids))
             for s in ordered_unique:
                 self.stream_locks[s].acquire()
-            t_lk1 = time.monotonic_ns()
+            t_lk1 = self.now_ns()
             with self.stats_lock:
                 self.lock_wait_ms.append((t_lk1 - t_lk0) * 1e-6)
 
+            t_gpu_launch = self.now_ns()
+            gpu_exec_ns = 0
             try:
                 with torch.no_grad(), torch.cuda.device(f_dev), torch.cuda.stream(f_st):
+                    ev0 = torch.cuda.Event(enable_timing=True)
+                    ev1 = torch.cuda.Event(enable_timing=True)
                     for item in batch_items:
                         f_st.wait_event(item[3])
+                    ev0.record(f_st)
                     fast_obs = torch.stack([x[2] for x in batch_items], dim=0)
                     slow_ts = [self.state_t_obs[s] for s in s_ids]
                     p_valid = torch.zeros((B,), dtype=torch.bool, device=f_dev)
@@ -644,12 +735,18 @@ class PyTorchDualStreamBaseline:
 
                     chunks = expert(fast_obs, view, self.zero_prefixes[f][:B])
                     chunks_f32 = chunks.float()
+                    ev1.record(f_st)
                     f_st.synchronize()
+                    gpu_exec_ns = int(ev0.elapsed_time(ev1) * 1e6)
             finally:
                 for s in reversed(ordered_unique):
                     self.stream_locks[s].release()
 
-            t_done = time.monotonic_ns()
+            self._wait_until_logical_ns(t_gpu_launch + gpu_exec_ns)
+            if not self.running:
+                break
+
+            t_done = self.now_ns()
             with self.act_locks[f], torch.no_grad(), torch.cuda.device(f_dev), torch.cuda.stream(s_st):
                 for i, s in enumerate(s_ids):
                     self.h_commit_lids[f][i] = self.local_fast_id[s]

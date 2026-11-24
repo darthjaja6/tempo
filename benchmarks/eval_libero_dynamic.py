@@ -13,14 +13,14 @@ weights (`lerobot/pi05_libero_finetuned_v044`, 3.3B BF16) across 4 deployment st
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gc
 import json
 import math
 import os
 import pathlib
-import threading
 import time
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
@@ -149,12 +149,14 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
         )
         self._ep: Optional[RealtimeEpisode] = None
         self._env: Optional[OffScreenRenderEnv] = None
+        self._active_policy: Optional[PolicyBase] = None
         self._is_dynamic: bool = False
         self._current_scene_meta: Dict[str, Any] = {}
         self._instruction: str = ""
         self._ep_start_t: float = 0.0
         self._last_step_end_t: float = 0.0
         self._obs_ready_t: float = 0.0
+        self._ep_paused_s: float = 0.0
         self._step_count: int = 0
         self._ep_stall_s: float = 0.0
         self._ep_max_disp_m: float = 0.0
@@ -163,6 +165,33 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
         self._target_init_pos: Dict[str, np.ndarray] = {}
         self.episode_records: List[Dict[str, Any]] = []
 
+    def bind_policy(self, policy: Optional[PolicyBase]) -> None:
+        self._active_policy = policy
+        if policy is not None and hasattr(policy, "set_reset_hook"):
+            policy.set_reset_hook(self.notify_policy_reset_done)
+
+    def notify_policy_reset_done(self) -> None:
+        if self._step_count == 0 and not self._ep_recorded:
+            now = time.perf_counter()
+            self._ep_start_t = now
+            self._last_step_end_t = now
+            self._obs_ready_t = now
+            self._ep_paused_s = 0.0
+
+    @contextlib.contextmanager
+    def _paused_sim_clock(self):
+        """Pauses episode & policy clocks during CPU MuJoCo physics/rendering so robot time stays 1.0x real-time."""
+        t_p0 = time.perf_counter()
+        pol = self._active_policy
+        if pol is not None and hasattr(pol, "pause_clock"):
+            pol.pause_clock()
+        try:
+            yield
+        finally:
+            if pol is not None and hasattr(pol, "resume_clock"):
+                pol.resume_clock()
+            self._ep_paused_s += max(0.0, time.perf_counter() - t_p0)
+
     def clear_records(self) -> None:
         self._finalize_episode_if_needed()
         self.episode_records.clear()
@@ -170,7 +199,8 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
     def _finalize_episode_if_needed(self) -> None:
         if self._ep_recorded or self._step_count == 0:
             return
-        wall_s = max(0.0, self._last_step_end_t - self._ep_start_t)
+        raw_wall_s = max(0.0, self._last_step_end_t - self._ep_start_t)
+        wall_s = max(0.0, raw_wall_s - self._ep_paused_s)
         self.episode_records.append(
             {
                 "scene_id": str(self._current_scene_meta.get("scene_id", "")),
@@ -181,6 +211,7 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
                 "success": bool(self._ep_success),
                 "steps": int(self._step_count),
                 "wall_time_s": round(wall_s, 4),
+                "sim_host_wall_s": round(raw_wall_s, 4),
                 "stall_time_s": round(self._ep_stall_s, 4),
                 "max_target_disp_m": round(self._ep_max_disp_m, 4),
             }
@@ -276,10 +307,13 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
             self._measure_target_disp()
 
         img_main, img_wrist, state_8d = extract_libero_obs(raw_obs)
+        if self._active_policy is not None and hasattr(self._active_policy, "resume_clock"):
+            self._active_policy.resume_clock()
         now = time.perf_counter()
         self._ep_start_t = now
         self._last_step_end_t = now
         self._obs_ready_t = now
+        self._ep_paused_s = 0.0
         return Observation(
             images={"agentview": img_main, "wrist": img_wrist},
             state={"eef_state": state_8d},
@@ -292,48 +326,51 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
         t_enter = time.perf_counter()
         policy_wait_s = t_enter - self._obs_ready_t
 
-        # Symmetric real-time wall-clock rule:
-        # 1. If policy inference blocked beyond the non-blocking control overhead (>15 ms),
-        #    the robot joints stood frozen for `policy_wait_s` before this action could start;
-        #    on dynamic scenes, advance MuJoCo world physics for that exact stall duration,
-        #    and then pace the 50 ms physical execution of `action`.
-        # 2. If policy.act() returned non-blockingly (<=15 ms), overlap it inside the 50 ms
-        #    control period so total step period is paced to 1.0x real-time (50 ms = 20 Hz).
+        # Symmetric 1.0x real-time robot clock rule:
+        # 1. If policy.act() blocked (>15 ms), the robot joints stood frozen for `policy_wait_s`
+        #    before `action` could begin; on dynamic scenes, advance MuJoCo world physics for
+        #    that exact stall duration while pausing the simulator-overhead clock.
+        # 2. Allow the full 50 ms (20 Hz) real-time control window to elapse on the unpaused
+        #    hardware clock so asynchronous GPU workers run for exact 1.0x physical step time,
+        #    then pause clocks during CPU MuJoCo physics & offscreen rendering.
         is_blocking_stall = policy_wait_s > 0.015
         if is_blocking_stall:
             self._ep_stall_s += policy_wait_s
             if self._is_dynamic and self._ep is not None:
-                self._ep._apply_sync_latency(self._env, policy_wait_s)
+                with self._paused_sim_clock():
+                    self._ep._apply_sync_latency(self._env, policy_wait_s)
 
-        t_exec_start = time.perf_counter()
+        t_after_stall = time.perf_counter()
+        anchor_t = t_after_stall if is_blocking_stall else self._obs_ready_t
+        rem = self._dt_s - (t_after_stall - anchor_t)
+        if rem > 0.0:
+            time.sleep(rem)
+
         act_np = np.clip(np.asarray(action.data, dtype=np.float32), -1.0, 1.0)
-        if self._is_dynamic and self._ep is not None:
-            raw_obs, reward, done, _info = self._ep._step_env(self._env, act_np)
-        else:
-            raw_obs, reward, done, _info = self._env.step(act_np.tolist())
+        with self._paused_sim_clock():
+            if self._is_dynamic and self._ep is not None:
+                raw_obs, reward, done, _info = self._ep._step_env(self._env, act_np)
+            else:
+                raw_obs, reward, done, _info = self._env.step(act_np.tolist())
 
-        self._step_count += 1
-        if self._is_dynamic and self._step_count % 10 == 0:
-            self._measure_target_disp()
+            self._step_count += 1
+            if self._is_dynamic and self._step_count % 10 == 0:
+                self._measure_target_disp()
 
-        is_success = bool(self._env.check_success())
+            is_success = bool(self._env.check_success())
+            img_main, img_wrist, state_8d = extract_libero_obs(raw_obs)
+
         terminated = bool(is_success or done)
         term_reason = "success" if is_success else ("done" if done else None)
         if is_success:
             self._ep_success = True
-
-        img_main, img_wrist, state_8d = extract_libero_obs(raw_obs)
-        anchor_t = t_exec_start if is_blocking_stall else self._obs_ready_t
-        rem = self._dt_s - (time.perf_counter() - anchor_t)
-        if rem > 0.0:
-            time.sleep(rem)
 
         now_end = time.perf_counter()
         self._last_step_end_t = now_end
         if terminated:
             self._finalize_episode_if_needed()
 
-        self._obs_ready_t = now_end
+        self._obs_ready_t = time.perf_counter()
         return StepResult(
             observation=Observation(
                 images={"agentview": img_main, "wrist": img_wrist},
@@ -423,6 +460,7 @@ class SyncChunkPolicy(PolicyBase):
         )
         self.config = PolicyConfig(action_horizon=chunk_horizon)
         self.infer_latencies_ms: List[float] = []
+        self._reset_hook: Optional[Callable[[], None]] = None
 
         # Warmup GPU kernels / torch.compile before episodes start
         with torch.no_grad():
@@ -444,6 +482,9 @@ class SyncChunkPolicy(PolicyBase):
                 self.fast_head(noise, view, pref)
             torch.cuda.synchronize(self.dev)
 
+    def set_reset_hook(self, hook: Optional[Callable[[], None]]) -> None:
+        self._reset_hook = hook
+
     def close(self) -> None:
         del self.slow_stage, self.fast_head, self.dep
         if self.compile_fast:
@@ -452,7 +493,8 @@ class SyncChunkPolicy(PolicyBase):
         torch.cuda.empty_cache()
 
     def reset(self, scene: Scene) -> None:
-        return None
+        if self._reset_hook is not None:
+            self._reset_hook()
 
     @torch.no_grad()
     def act(self, observation: Observation) -> ActionChunk:
@@ -529,8 +571,17 @@ class PyTorchAsyncPolicy(PolicyBase):
             step_dt_ms=50.0,
         )
         self.base.start()
-        self._bg_running = False
-        self._bg_thread: Optional[threading.Thread] = None
+        with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
+            self._bg_slow_obs = [
+                torch.rand(self.dep.slow_obs_shape, dtype=torch.bfloat16, device=self.dev)
+                for _ in range(max(0, self.num_streams - 1))
+            ]
+            self._bg_fast_obs = [
+                torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
+                for _ in range(max(0, self.num_streams - 1))
+            ]
+        self._fg_stream.synchronize()
+        self._reset_hook: Optional[Callable[[], None]] = None
         self._step_idx = 0
         self.info = PolicyInfo(
             name=f"pytorch-async-n{num_streams}",
@@ -544,14 +595,16 @@ class PyTorchAsyncPolicy(PolicyBase):
         self.act_latencies_us: List[float] = []
         self.underruns: int = 0
 
-    def _stop_bg(self) -> None:
-        self._bg_running = False
-        if self._bg_thread is not None:
-            self._bg_thread.join(timeout=2.0)
-            self._bg_thread = None
+    def set_reset_hook(self, hook: Optional[Callable[[], None]]) -> None:
+        self._reset_hook = hook
+
+    def pause_clock(self) -> None:
+        self.base.pause_clock()
+
+    def resume_clock(self) -> None:
+        self.base.resume_clock()
 
     def close(self) -> None:
-        self._stop_bg()
         with self.base.stats_lock:
             self.fast_ttac_ms.extend(self.base.fast_ttac_ms)
             self.base.fast_ttac_ms.clear()
@@ -560,40 +613,16 @@ class PyTorchAsyncPolicy(PolicyBase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def _sibling_traffic_loop(self) -> None:
-        sib_stream = torch.cuda.Stream(device=self.dev)
-        with torch.cuda.device(self.dev), torch.cuda.stream(sib_stream):
-            bg_s = torch.rand(self.dep.slow_obs_shape, dtype=torch.bfloat16, device=self.dev)
-            bg_f = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
-        sib_stream.synchronize()
-        tick = 1
-        while self._bg_running:
-            now_ns = time.monotonic_ns()
-            for s in range(1, self.num_streams):
-                if tick % self.slow_every_steps == 1:
-                    self.base.push_slow(bg_s, stream_id=s, t_obs_ns=now_ns)
-                if tick % self.fast_every_steps == 0:
-                    self.base.push_fast(bg_f, stream_id=s, t_obs_ns=now_ns)
-            tick += 1
-            time.sleep(0.050)
-
     def reset(self, scene: Scene) -> None:
-        self._stop_bg()
+        self.base.stop()
         with self.base.stats_lock:
             self.fast_ttac_ms.extend(self.base.fast_ttac_ms)
             self.base.fast_ttac_ms.clear()
-        for r in range(self.base.R):
-            with self.base.slow_q_locks[r]:
-                self.base.pending_slow[r].clear()
-        for f in range(self.base.F):
-            with self.base.fast_q_locks[f]:
-                self.base.pending_fast[f].clear()
-            with self.base.act_locks[f], torch.cuda.device(self.dev), torch.cuda.stream(self.base.sample_streams[f]):
-                self.base.active_valid_gpu[f].zero_()
-            self.base.sample_streams[f].synchronize()
-        with self.base.stats_lock:
-            self.base.active_valid = [False for _ in range(self.num_streams)]
+        self.base.reset()
+        self.base.start()
         self._step_idx = 0
+        if self._reset_hook is not None:
+            self._reset_hook()
 
     def act(self, observation: Observation) -> ActionChunk:
         t0 = time.perf_counter()
@@ -606,18 +635,20 @@ class PyTorchAsyncPolicy(PolicyBase):
                 noise = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
             self._fg_stream.synchronize()
 
-            t_ns = time.monotonic_ns()
-            for s in range(self.num_streams):
-                self.base.push_slow(obs_bf16, stream_id=s, t_obs_ns=t_ns)
+            t_ns = self.base.now_ns()
+            self.base.push_slow(obs_bf16, stream_id=0, t_obs_ns=t_ns)
+            for s in range(1, self.num_streams):
+                self.base.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=t_ns)
             deadline = time.monotonic() + 15.0
             while not all(self.base.state_t_obs[s] >= t_ns for s in range(self.num_streams)):
                 if time.monotonic() > deadline:
                     raise TimeoutError("PyTorchAsyncPolicy timed out waiting for initial Slow state")
                 time.sleep(0.001)
 
-            t_fast_ns = time.monotonic_ns()
-            for s in range(self.num_streams):
-                self.base.push_fast(noise, stream_id=s, t_obs_ns=t_fast_ns)
+            t_fast_ns = self.base.now_ns()
+            self.base.push_fast(noise, stream_id=0, t_obs_ns=t_fast_ns)
+            for s in range(1, self.num_streams):
+                self.base.push_fast(self._bg_fast_obs[s - 1], stream_id=s, t_obs_ns=t_fast_ns)
             deadline = time.monotonic() + 15.0
             while True:
                 with self.base.stats_lock:
@@ -628,28 +659,28 @@ class PyTorchAsyncPolicy(PolicyBase):
                     raise TimeoutError("PyTorchAsyncPolicy timed out waiting for initial Fast chunk")
                 time.sleep(0.001)
 
-            act_t, *_ = self.base.sample_actions(time.monotonic_ns())
+            act_t, *_ = self.base.sample_actions(self.base.now_ns())
             with self.base.stats_lock:
                 self.base.fast_ttac_ms.clear()
                 self.base.commit_hard_underruns = 0
-            if self.num_streams > 1:
-                self._bg_running = True
-                self._bg_thread = threading.Thread(target=self._sibling_traffic_loop, daemon=True)
-                self._bg_thread.start()
         else:
-            now_ns = time.monotonic_ns()
+            now_ns = self.base.now_ns()
             if self._step_idx % self.slow_every_steps == 1:
                 self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
                 with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
                     obs_bf16 = cams.to(self.dev, dtype=torch.bfloat16) / 255.0
                 self._fg_stream.synchronize()
                 self.base.push_slow(obs_bf16, stream_id=0, t_obs_ns=now_ns)
+                for s in range(1, self.num_streams):
+                    self.base.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=now_ns)
             if self._step_idx % self.fast_every_steps == 0:
                 with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
                     noise = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
                 self._fg_stream.synchronize()
                 self.base.push_fast(noise, stream_id=0, t_obs_ns=now_ns)
-            act_t, _fa, _sa, u = self.base.sample_actions(time.monotonic_ns())
+                for s in range(1, self.num_streams):
+                    self.base.push_fast(self._bg_fast_obs[s - 1], stream_id=s, t_obs_ns=now_ns)
+            act_t, _fa, _sa, u = self.base.sample_actions(self.base.now_ns())
             self.underruns += int(u)
 
         lat_s = time.perf_counter() - t0
@@ -690,8 +721,14 @@ class TempoPolicy(PolicyBase):
         )
         assert self.engine.deployment is not None
         self.slow_stage = self.engine.deployment.slow_replicas[0][0]
-        self._bg_running = False
-        self._bg_thread: Optional[threading.Thread] = None
+        sib_stream = torch.cuda.Stream(device="cuda:0")
+        with torch.cuda.device("cuda:0"), torch.cuda.stream(sib_stream):
+            self._bg_slow_obs = [
+                torch.randint(0, 256, self.engine.slow_obs_shape, dtype=torch.uint8, device="cuda:0")
+                for _ in range(max(0, self.num_streams - 1))
+            ]
+        sib_stream.synchronize()
+        self._reset_hook: Optional[Callable[[], None]] = None
         self._step_idx = 0
         self.info = PolicyInfo(
             name=f"tempo-n{num_streams}",
@@ -705,39 +742,27 @@ class TempoPolicy(PolicyBase):
         self.act_latencies_us: List[float] = []
         self.underruns: int = 0
 
-    def _stop_bg(self) -> None:
-        self._bg_running = False
-        if self._bg_thread is not None:
-            self._bg_thread.join(timeout=2.0)
-            self._bg_thread = None
+    def set_reset_hook(self, hook: Optional[Callable[[], None]]) -> None:
+        self._reset_hook = hook
+
+    def pause_clock(self) -> None:
+        self.engine.pause_clock()
+
+    def resume_clock(self) -> None:
+        self.engine.resume_clock()
 
     def close(self) -> None:
-        self._stop_bg()
         self.engine.stop()
         del self.slow_stage, self.engine
         gc.collect()
         torch.cuda.empty_cache()
 
-    def _sibling_traffic_loop(self) -> None:
-        sib_stream = torch.cuda.Stream(device="cuda:0")
-        with torch.cuda.device("cuda:0"), torch.cuda.stream(sib_stream):
-            bg_s = torch.randint(0, 256, self.engine.slow_obs_shape, dtype=torch.uint8, device="cuda:0")
-        sib_stream.synchronize()
-        tick = 1
-        while self._bg_running:
-            for s in range(1, self.num_streams):
-                if tick % self.slow_every_steps == 1:
-                    self.engine.push_slow(bg_s, stream_id=s)
-                if tick % self.fast_every_steps == 0:
-                    self.engine.push_fast(stream_id=s)
-            tick += 1
-            time.sleep(0.050)
-
     def reset(self, scene: Scene) -> None:
-        self._stop_bg()
         self.fast_ttac_ms.extend(self.engine.telemetry().fast_ttac_ms)
         self.engine.reset()
         self._step_idx = 0
+        if self._reset_hook is not None:
+            self._reset_hook()
 
     def act(self, observation: Observation) -> ActionChunk:
         t0 = time.perf_counter()
@@ -745,22 +770,24 @@ class TempoPolicy(PolicyBase):
 
         if self._step_idx == 0:
             self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
-            for s in range(self.num_streams):
-                self.engine.push_slow(cams, stream_id=s)
+            t_ns = self.engine.now_ns()
+            self.engine.push_slow(cams, stream_id=0, t_obs_ns=t_ns)
+            for s in range(1, self.num_streams):
+                self.engine.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=t_ns)
             self.engine.wait_ready()
             self.engine.reset_stats()
             actions, *_ = self.engine.sample_actions(cpu=True)
-            if self.num_streams > 1:
-                self._bg_running = True
-                self._bg_thread = threading.Thread(target=self._sibling_traffic_loop, daemon=True)
-                self._bg_thread.start()
         else:
+            now_ns = self.engine.now_ns()
             if self._step_idx % self.slow_every_steps == 1:
                 self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
-                self.engine.push_slow(cams)
+                self.engine.push_slow(cams, stream_id=0, t_obs_ns=now_ns)
+                for s in range(1, self.num_streams):
+                    self.engine.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=now_ns)
             if self._step_idx % self.fast_every_steps == 0:
-                self.engine.push_fast()
-            actions, _fa, _sa, u = self.engine.sample_actions(cpu=True)
+                for s in range(self.num_streams):
+                    self.engine.push_fast(stream_id=s, t_obs_ns=now_ns)
+            actions, _fa, _sa, u = self.engine.sample_actions(now_ns, cpu=True)
             self.underruns += int(u)
 
         lat_s = time.perf_counter() - t0
@@ -932,6 +959,7 @@ def evaluate_policy_suite(
 ) -> Dict[str, Any]:
     policy = policy_factory()
     embodiment.clear_records()
+    embodiment.bind_policy(policy)
     level_speed_mps = {"static": 0.0, "l1": 0.03, "l2": 0.06, "l3": 0.09}
 
     try:
@@ -1005,6 +1033,7 @@ def evaluate_policy_suite(
             result["underruns"] = int(policy.underruns)
         return result
     finally:
+        embodiment.bind_policy(None)
         policy.close()
 
 
@@ -1145,6 +1174,25 @@ def main() -> None:
                     ),
                 ]
 
+            def _flush_out_json() -> None:
+                attach_paired_speedups(all_runs)
+                args.out_json.parent.mkdir(parents=True, exist_ok=True)
+                args.out_json.write_text(
+                    json.dumps(
+                        {
+                            "gpu": gpu_name,
+                            "harness": "robocurve/inspect-robots",
+                            "benchmarks": [
+                                "LIBERO-Static (libero_spatial, libero_object, libero_goal @ 20 Hz real-time)",
+                                "LIBERO-Dynamic (0.03 / 0.06 / 0.09 m/s moving objects @ 20 Hz real-time)",
+                            ],
+                            "runs": all_runs,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+
             print(f"\n=== [Suite A] Standard LIBERO (Static, 20 Hz Real-Time) | N={n_streams} ===", flush=True)
             for label, factory in factories:
                 res_s = evaluate_policy_suite(
@@ -1158,6 +1206,7 @@ def main() -> None:
                     args.log_dir,
                 )
                 all_runs.append(res_s)
+                _flush_out_json()
 
             print(f"\n=== [Suite B] LIBERO-Dynamic (0.03 / 0.06 / 0.09 m/s, 20 Hz Real-Time) | N={n_streams} ===", flush=True)
             for label, factory in factories:
@@ -1172,22 +1221,10 @@ def main() -> None:
                     args.log_dir,
                 )
                 all_runs.append(res_d)
+                _flush_out_json()
     finally:
         embodiment.close()
 
-    attach_paired_speedups(all_runs)
-
-    payload = {
-        "gpu": gpu_name,
-        "harness": "robocurve/inspect-robots",
-        "benchmarks": [
-            "LIBERO-Static (libero_spatial, libero_object, libero_goal @ 20 Hz real-time)",
-            "LIBERO-Dynamic (0.03 / 0.06 / 0.09 m/s moving objects @ 20 Hz real-time)",
-        ],
-        "runs": all_runs,
-    }
-    args.out_json.parent.mkdir(parents=True, exist_ok=True)
-    args.out_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"\n[RealtimeBench] Saved results to {args.out_json}", flush=True)
 
 

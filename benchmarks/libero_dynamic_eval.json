@@ -15,12 +15,12 @@
       "successes": 11,
       "success_rate_pct": 91.7,
       "mean_time_to_success_s": 8.95,
-      "mean_steps_to_success": 104.0,
-      "mean_episode_wall_s": 10.06,
-      "total_wall_s": 120.68,
-      "total_stall_s": 50.38,
-      "robot_stall_pct": 41.7,
-      "fleet_goodput_tasks_per_min": 5.47,
+      "mean_steps_to_success": 105.9,
+      "mean_episode_wall_s": 9.98,
+      "total_wall_s": 119.75,
+      "total_stall_s": 48.34,
+      "robot_stall_pct": 40.4,
+      "fleet_goodput_tasks_per_min": 5.51,
       "max_target_disp_m": 0.0,
       "per_group": {
         "static": {
@@ -28,12 +28,12 @@
           "successes": 11,
           "success_rate_pct": 91.7,
           "mean_time_to_success_s": 8.95,
-          "mean_steps_to_success": 104.0,
-          "mean_episode_wall_s": 10.06,
-          "total_wall_s": 120.68,
-          "total_stall_s": 50.38,
-          "robot_stall_pct": 41.7,
-          "fleet_goodput_tasks_per_min": 5.47,
+          "mean_steps_to_success": 105.9,
+          "mean_episode_wall_s": 9.98,
+          "total_wall_s": 119.75,
+          "total_stall_s": 48.34,
+          "robot_stall_pct": 40.4,
+          "fleet_goodput_tasks_per_min": 5.51,
           "max_target_disp_m": 0.0,
           "speed_mps": 0.0
         }
@@ -46,9 +46,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 75,
-          "wall_time_s": 6.4561,
-          "stall_time_s": 2.7011,
+          "steps": 77,
+          "wall_time_s": 6.5509,
+          "sim_host_wall_s": 8.4042,
+          "stall_time_s": 2.6931,
           "max_target_disp_m": 0.0
         },
         {
@@ -59,8 +60,9 @@
           "init_idx": 1,
           "success": true,
           "steps": 71,
-          "wall_time_s": 6.2465,
-          "stall_time_s": 2.6918,
+          "wall_time_s": 5.9693,
+          "sim_host_wall_s": 7.415,
+          "stall_time_s": 2.413,
           "max_target_disp_m": 0.0
         },
         {
@@ -70,9 +72,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 88,
-          "wall_time_s": 7.4239,
-          "stall_time_s": 3.018,
+          "steps": 86,
+          "wall_time_s": 7.2337,
+          "sim_host_wall_s": 9.3038,
+          "stall_time_s": 2.9254,
           "max_target_disp_m": 0.0
         },
         {
@@ -82,9 +85,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 107,
-          "wall_time_s": 9.1727,
-          "stall_time_s": 3.8151,
+          "steps": 110,
+          "wall_time_s": 9.0806,
+          "sim_host_wall_s": 11.5994,
+          "stall_time_s": 3.57,
           "max_target_disp_m": 0.0
         },
         {
@@ -95,8 +99,9 @@
           "init_idx": 1,
           "success": true,
           "steps": 106,
-          "wall_time_s": 9.0023,
-          "stall_time_s": 3.6947,
+          "wall_time_s": 8.8901,
+          "sim_host_wall_s": 11.3255,
+          "stall_time_s": 3.5792,
           "max_target_disp_m": 0.0
         },
         {
@@ -106,9 +111,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 103,
-          "wall_time_s": 8.8281,
-          "stall_time_s": 3.671,
+          "steps": 109,
+          "wall_time_s": 8.9371,
+          "sim_host_wall_s": 11.3842,
+          "stall_time_s": 3.4772,
           "max_target_disp_m": 0.0
         },
         {
@@ -117,10 +123,11 @@
           "task_id": 0,
           "level": "static",
           "init_idx": 0,
-          "success": true,
-          "steps": 125,
-          "wall_time_s": 10.7321,
-          "stall_time_s": 4.4733,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.2965,
+          "sim_host_wall_s": 25.8647,
+          "stall_time_s": 8.2681,
           "max_target_disp_m": 0.0
         },
         {
@@ -129,10 +136,11 @@
           "task_id": 0,
           "level": "static",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 22.1806,
-          "stall_time_s": 9.1619,
+          "success": true,
+          "steps": 131,
+          "wall_time_s": 11.3492,
+          "sim_host_wall_s": 13.9232,
+          "stall_time_s": 4.7836,
           "max_target_disp_m": 0.0
         },
         {
@@ -143,8 +151,9 @@
           "init_idx": 2,
           "success": true,
           "steps": 141,
-          "wall_time_s": 12.1684,
-          "stall_time_s": 5.1085,
+          "wall_time_s": 12.0487,
+          "sim_host_wall_s": 14.6601,
+          "stall_time_s": 4.978,
           "max_target_disp_m": 0.0
         },
         {
@@ -154,9 +163,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 112,
-          "wall_time_s": 9.7806,
-          "stall_time_s": 4.1726,
+          "steps": 120,
+          "wall_time_s": 10.1509,
+          "sim_host_wall_s": 12.3956,
+          "stall_time_s": 4.1387,
           "max_target_disp_m": 0.0
         },
         {
@@ -166,9 +176,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 112,
-          "wall_time_s": 9.681,
-          "stall_time_s": 4.0732,
+          "steps": 108,
+          "wall_time_s": 9.0555,
+          "sim_host_wall_s": 11.1003,
+          "stall_time_s": 3.641,
           "max_target_disp_m": 0.0
         },
         {
@@ -178,19 +189,20 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 104,
-          "wall_time_s": 9.0091,
-          "stall_time_s": 3.8021,
+          "steps": 106,
+          "wall_time_s": 9.1898,
+          "sim_host_wall_s": 11.4657,
+          "stall_time_s": 3.8769,
           "max_target_disp_m": 0.0
         }
       ],
-      "chunk_infer_p50_ms": 341.25,
-      "chunk_infer_p99_ms": 380.74,
+      "chunk_infer_p50_ms": 328.72,
+      "chunk_infer_p99_ms": 375.46,
       "paired_common_successes": 11,
       "paired_wall_s_vs_tempo": {
         "baseline_s": 8.95,
-        "tempo_s": 5.69,
-        "tempo_speedup_x": 1.57
+        "tempo_s": 5.82,
+        "tempo_speedup_x": 1.54
       }
     },
     {
@@ -199,28 +211,28 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 1,
       "episodes": 12,
-      "successes": 12,
-      "success_rate_pct": 100.0,
-      "mean_time_to_success_s": 8.73,
-      "mean_steps_to_success": 113.4,
-      "mean_episode_wall_s": 8.73,
-      "total_wall_s": 104.81,
-      "total_stall_s": 36.66,
-      "robot_stall_pct": 35.0,
-      "fleet_goodput_tasks_per_min": 6.87,
+      "successes": 11,
+      "success_rate_pct": 91.7,
+      "mean_time_to_success_s": 8.18,
+      "mean_steps_to_success": 106.8,
+      "mean_episode_wall_s": 9.14,
+      "total_wall_s": 109.62,
+      "total_stall_s": 37.74,
+      "robot_stall_pct": 34.4,
+      "fleet_goodput_tasks_per_min": 6.02,
       "max_target_disp_m": 0.0,
       "per_group": {
         "static": {
           "episodes": 12,
-          "successes": 12,
-          "success_rate_pct": 100.0,
-          "mean_time_to_success_s": 8.73,
-          "mean_steps_to_success": 113.4,
-          "mean_episode_wall_s": 8.73,
-          "total_wall_s": 104.81,
-          "total_stall_s": 36.66,
-          "robot_stall_pct": 35.0,
-          "fleet_goodput_tasks_per_min": 6.87,
+          "successes": 11,
+          "success_rate_pct": 91.7,
+          "mean_time_to_success_s": 8.18,
+          "mean_steps_to_success": 106.8,
+          "mean_episode_wall_s": 9.14,
+          "total_wall_s": 109.62,
+          "total_stall_s": 37.74,
+          "robot_stall_pct": 34.4,
+          "fleet_goodput_tasks_per_min": 6.02,
           "max_target_disp_m": 0.0,
           "speed_mps": 0.0
         }
@@ -234,8 +246,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 79,
-          "wall_time_s": 6.0933,
-          "stall_time_s": 2.1379,
+          "wall_time_s": 5.9105,
+          "sim_host_wall_s": 7.6441,
+          "stall_time_s": 1.9525,
           "max_target_disp_m": 0.0
         },
         {
@@ -245,9 +258,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 71,
-          "wall_time_s": 5.4868,
-          "stall_time_s": 1.9319,
+          "steps": 73,
+          "wall_time_s": 5.5818,
+          "sim_host_wall_s": 7.1281,
+          "stall_time_s": 1.925,
           "max_target_disp_m": 0.0
         },
         {
@@ -257,9 +271,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 86,
-          "wall_time_s": 6.708,
-          "stall_time_s": 2.4022,
+          "steps": 85,
+          "wall_time_s": 6.547,
+          "sim_host_wall_s": 8.3948,
+          "stall_time_s": 2.2896,
           "max_target_disp_m": 0.0
         },
         {
@@ -270,8 +285,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 110,
-          "wall_time_s": 8.5105,
-          "stall_time_s": 3.003,
+          "wall_time_s": 8.4088,
+          "sim_host_wall_s": 10.7868,
+          "stall_time_s": 2.899,
           "max_target_disp_m": 0.0
         },
         {
@@ -281,9 +297,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 104,
-          "wall_time_s": 7.9325,
-          "stall_time_s": 2.7256,
+          "steps": 105,
+          "wall_time_s": 7.9274,
+          "sim_host_wall_s": 10.2135,
+          "stall_time_s": 2.668,
           "max_target_disp_m": 0.0
         },
         {
@@ -294,8 +311,9 @@
           "init_idx": 2,
           "success": true,
           "steps": 103,
-          "wall_time_s": 7.8933,
-          "stall_time_s": 2.7366,
+          "wall_time_s": 7.6952,
+          "sim_host_wall_s": 9.9147,
+          "stall_time_s": 2.536,
           "max_target_disp_m": 0.0
         },
         {
@@ -305,9 +323,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 135,
-          "wall_time_s": 10.3086,
-          "stall_time_s": 3.5492,
+          "steps": 140,
+          "wall_time_s": 10.3756,
+          "sim_host_wall_s": 12.6573,
+          "stall_time_s": 3.3637,
           "max_target_disp_m": 0.0
         },
         {
@@ -316,10 +335,11 @@
           "task_id": 0,
           "level": "static",
           "init_idx": 1,
-          "success": true,
-          "steps": 128,
-          "wall_time_s": 9.8559,
-          "stall_time_s": 3.4473,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 19.674,
+          "sim_host_wall_s": 24.1204,
+          "stall_time_s": 6.6506,
           "max_target_disp_m": 0.0
         },
         {
@@ -329,9 +349,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 135,
-          "wall_time_s": 10.3247,
-          "stall_time_s": 3.5657,
+          "steps": 139,
+          "wall_time_s": 10.7508,
+          "sim_host_wall_s": 13.0433,
+          "stall_time_s": 3.7883,
           "max_target_disp_m": 0.0
         },
         {
@@ -341,9 +362,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 190,
-          "wall_time_s": 14.6629,
-          "stall_time_s": 5.1493,
+          "steps": 122,
+          "wall_time_s": 9.7173,
+          "sim_host_wall_s": 12.0151,
+          "stall_time_s": 3.604,
           "max_target_disp_m": 0.0
         },
         {
@@ -353,9 +375,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 119,
-          "wall_time_s": 9.1667,
-          "stall_time_s": 3.2087,
+          "steps": 111,
+          "wall_time_s": 8.6483,
+          "sim_host_wall_s": 10.62,
+          "stall_time_s": 3.0873,
           "max_target_disp_m": 0.0
         },
         {
@@ -365,19 +388,20 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 101,
-          "wall_time_s": 7.8626,
-          "stall_time_s": 2.8056,
+          "steps": 108,
+          "wall_time_s": 8.3856,
+          "sim_host_wall_s": 10.3505,
+          "stall_time_s": 2.9753,
           "max_target_disp_m": 0.0
         }
       ],
-      "chunk_infer_p50_ms": 104.12,
-      "chunk_infer_p99_ms": 123.12,
-      "paired_common_successes": 12,
+      "chunk_infer_p50_ms": 104.2,
+      "chunk_infer_p99_ms": 129.16,
+      "paired_common_successes": 11,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 8.73,
-        "tempo_s": 5.78,
-        "tempo_speedup_x": 1.51
+        "baseline_s": 8.18,
+        "tempo_s": 5.79,
+        "tempo_speedup_x": 1.41
       }
     },
     {
@@ -386,217 +410,28 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 1,
       "episodes": 12,
-      "successes": 2,
-      "success_rate_pct": 16.7,
-      "mean_time_to_success_s": 7.53,
-      "mean_steps_to_success": 141.5,
-      "mean_episode_wall_s": 12.52,
-      "total_wall_s": 150.27,
-      "total_stall_s": 5.18,
-      "robot_stall_pct": 3.4,
-      "fleet_goodput_tasks_per_min": 0.8,
+      "successes": 8,
+      "success_rate_pct": 66.7,
+      "mean_time_to_success_s": 6.8,
+      "mean_steps_to_success": 128.1,
+      "mean_episode_wall_s": 9.0,
+      "total_wall_s": 108.04,
+      "total_stall_s": 4.57,
+      "robot_stall_pct": 4.2,
+      "fleet_goodput_tasks_per_min": 4.44,
       "max_target_disp_m": 0.0,
       "per_group": {
         "static": {
           "episodes": 12,
-          "successes": 2,
-          "success_rate_pct": 16.7,
-          "mean_time_to_success_s": 7.53,
-          "mean_steps_to_success": 141.5,
-          "mean_episode_wall_s": 12.52,
-          "total_wall_s": 150.27,
-          "total_stall_s": 5.18,
-          "robot_stall_pct": 3.4,
-          "fleet_goodput_tasks_per_min": 0.8,
-          "max_target_disp_m": 0.0,
-          "speed_mps": 0.0
-        }
-      },
-      "episodes_detail": [
-        {
-          "scene_id": "static__libero_spatial__t0__i0",
-          "suite": "libero_spatial",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.56,
-          "stall_time_s": 0.468,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t0__i1",
-          "suite": "libero_spatial",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5102,
-          "stall_time_s": 0.4183,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t0__i2",
-          "suite": "libero_spatial",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 2,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5825,
-          "stall_time_s": 0.4662,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t1__i0",
-          "suite": "libero_spatial",
-          "task_id": 1,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5013,
-          "stall_time_s": 0.4191,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t1__i1",
-          "suite": "libero_spatial",
-          "task_id": 1,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.6245,
-          "stall_time_s": 0.4333,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t1__i2",
-          "suite": "libero_spatial",
-          "task_id": 1,
-          "level": "static",
-          "init_idx": 2,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5072,
-          "stall_time_s": 0.3866,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_object__t0__i0",
-          "suite": "libero_object",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4958,
-          "stall_time_s": 0.4544,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_object__t0__i1",
-          "suite": "libero_object",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4893,
-          "stall_time_s": 0.4568,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_object__t0__i2",
-          "suite": "libero_object",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 2,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4542,
-          "stall_time_s": 0.4158,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_goal__t0__i0",
-          "suite": "libero_goal",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 0,
-          "success": true,
-          "steps": 138,
-          "wall_time_s": 7.3702,
-          "stall_time_s": 0.448,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_goal__t0__i1",
-          "suite": "libero_goal",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4869,
-          "stall_time_s": 0.4082,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_goal__t0__i2",
-          "suite": "libero_goal",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 2,
-          "success": true,
-          "steps": 145,
-          "wall_time_s": 7.6887,
-          "stall_time_s": 0.4008,
-          "max_target_disp_m": 0.0
-        }
-      ],
-      "fast_ttac_p50_ms": 598.84,
-      "fast_ttac_p99_ms": 781.54,
-      "act_p50_us": 4781.75,
-      "underruns": 0,
-      "paired_common_successes": 2,
-      "paired_wall_s_vs_tempo": {
-        "baseline_s": 7.53,
-        "tempo_s": 5.64,
-        "tempo_speedup_x": 1.33
-      }
-    },
-    {
-      "suite": "LIBERO-Static",
-      "policy": "Tempo (Engine, N=1)",
-      "model": "lerobot/pi05_libero_finetuned_v044",
-      "num_streams": 1,
-      "episodes": 12,
-      "successes": 12,
-      "success_rate_pct": 100.0,
-      "mean_time_to_success_s": 5.78,
-      "mean_steps_to_success": 114.2,
-      "mean_episode_wall_s": 5.78,
-      "total_wall_s": 69.34,
-      "total_stall_s": 0.74,
-      "robot_stall_pct": 1.1,
-      "fleet_goodput_tasks_per_min": 10.38,
-      "max_target_disp_m": 0.0,
-      "per_group": {
-        "static": {
-          "episodes": 12,
-          "successes": 12,
-          "success_rate_pct": 100.0,
-          "mean_time_to_success_s": 5.78,
-          "mean_steps_to_success": 114.2,
-          "mean_episode_wall_s": 5.78,
-          "total_wall_s": 69.34,
-          "total_stall_s": 0.74,
-          "robot_stall_pct": 1.1,
-          "fleet_goodput_tasks_per_min": 10.38,
+          "successes": 8,
+          "success_rate_pct": 66.7,
+          "mean_time_to_success_s": 6.8,
+          "mean_steps_to_success": 128.1,
+          "mean_episode_wall_s": 9.0,
+          "total_wall_s": 108.04,
+          "total_stall_s": 4.57,
+          "robot_stall_pct": 4.2,
+          "fleet_goodput_tasks_per_min": 4.44,
           "max_target_disp_m": 0.0,
           "speed_mps": 0.0
         }
@@ -609,9 +444,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 75,
-          "wall_time_s": 3.8188,
-          "stall_time_s": 0.0637,
+          "steps": 78,
+          "wall_time_s": 4.3184,
+          "sim_host_wall_s": 6.8425,
+          "stall_time_s": 0.4106,
           "max_target_disp_m": 0.0
         },
         {
@@ -622,8 +458,9 @@
           "init_idx": 1,
           "success": true,
           "steps": 81,
-          "wall_time_s": 4.1172,
-          "stall_time_s": 0.0618,
+          "wall_time_s": 4.4418,
+          "sim_host_wall_s": 7.1298,
+          "stall_time_s": 0.3835,
           "max_target_disp_m": 0.0
         },
         {
@@ -632,10 +469,11 @@
           "task_id": 0,
           "level": "static",
           "init_idx": 2,
-          "success": true,
-          "steps": 100,
-          "wall_time_s": 5.0688,
-          "stall_time_s": 0.062,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4282,
+          "sim_host_wall_s": 21.3453,
+          "stall_time_s": 0.3987,
           "max_target_disp_m": 0.0
         },
         {
@@ -645,9 +483,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 161,
-          "wall_time_s": 8.1238,
-          "stall_time_s": 0.0628,
+          "steps": 254,
+          "wall_time_s": 13.1264,
+          "sim_host_wall_s": 21.4004,
+          "stall_time_s": 0.4011,
           "max_target_disp_m": 0.0
         },
         {
@@ -657,9 +496,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 109,
-          "wall_time_s": 5.5206,
-          "stall_time_s": 0.063,
+          "steps": 99,
+          "wall_time_s": 5.3113,
+          "sim_host_wall_s": 8.551,
+          "stall_time_s": 0.3503,
           "max_target_disp_m": 0.0
         },
         {
@@ -668,10 +508,11 @@
           "task_id": 1,
           "level": "static",
           "init_idx": 2,
-          "success": true,
-          "steps": 108,
-          "wall_time_s": 5.4689,
-          "stall_time_s": 0.061,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4262,
+          "sim_host_wall_s": 22.2246,
+          "stall_time_s": 0.3984,
           "max_target_disp_m": 0.0
         },
         {
@@ -681,9 +522,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 137,
-          "wall_time_s": 6.9208,
-          "stall_time_s": 0.061,
+          "steps": 129,
+          "wall_time_s": 6.8264,
+          "sim_host_wall_s": 10.4276,
+          "stall_time_s": 0.362,
           "max_target_disp_m": 0.0
         },
         {
@@ -693,9 +535,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 134,
-          "wall_time_s": 6.7698,
-          "stall_time_s": 0.0601,
+          "steps": 137,
+          "wall_time_s": 7.2096,
+          "sim_host_wall_s": 10.8561,
+          "stall_time_s": 0.3444,
           "max_target_disp_m": 0.0
         },
         {
@@ -706,8 +549,210 @@
           "init_idx": 2,
           "success": true,
           "steps": 133,
-          "wall_time_s": 6.7202,
+          "wall_time_s": 7.0554,
+          "sim_host_wall_s": 10.97,
+          "stall_time_s": 0.3907,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_goal__t0__i0",
+          "suite": "libero_goal",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 114,
+          "wall_time_s": 6.0712,
+          "sim_host_wall_s": 9.3395,
+          "stall_time_s": 0.3593,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_goal__t0__i1",
+          "suite": "libero_goal",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 1,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.42,
+          "sim_host_wall_s": 21.0916,
+          "stall_time_s": 0.3926,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_goal__t0__i2",
+          "suite": "libero_goal",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 2,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4029,
+          "sim_host_wall_s": 21.127,
+          "stall_time_s": 0.3765,
+          "max_target_disp_m": 0.0
+        }
+      ],
+      "fast_ttac_p50_ms": 524.86,
+      "fast_ttac_p99_ms": 674.52,
+      "act_p50_us": 3708.45,
+      "underruns": 0,
+      "paired_common_successes": 8,
+      "paired_wall_s_vs_tempo": {
+        "baseline_s": 6.8,
+        "tempo_s": 6.18,
+        "tempo_speedup_x": 1.1
+      }
+    },
+    {
+      "suite": "LIBERO-Static",
+      "policy": "Tempo (Engine, N=1)",
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 1,
+      "episodes": 12,
+      "successes": 12,
+      "success_rate_pct": 100.0,
+      "mean_time_to_success_s": 5.89,
+      "mean_steps_to_success": 116.3,
+      "mean_episode_wall_s": 5.89,
+      "total_wall_s": 70.67,
+      "total_stall_s": 0.73,
+      "robot_stall_pct": 1.0,
+      "fleet_goodput_tasks_per_min": 10.19,
+      "max_target_disp_m": 0.0,
+      "per_group": {
+        "static": {
+          "episodes": 12,
+          "successes": 12,
+          "success_rate_pct": 100.0,
+          "mean_time_to_success_s": 5.89,
+          "mean_steps_to_success": 116.3,
+          "mean_episode_wall_s": 5.89,
+          "total_wall_s": 70.67,
+          "total_stall_s": 0.73,
+          "robot_stall_pct": 1.0,
+          "fleet_goodput_tasks_per_min": 10.19,
+          "max_target_disp_m": 0.0,
+          "speed_mps": 0.0
+        }
+      },
+      "episodes_detail": [
+        {
+          "scene_id": "static__libero_spatial__t0__i0",
+          "suite": "libero_spatial",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 84,
+          "wall_time_s": 4.2696,
+          "sim_host_wall_s": 6.8372,
+          "stall_time_s": 0.0616,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t0__i1",
+          "suite": "libero_spatial",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 1,
+          "success": true,
+          "steps": 84,
+          "wall_time_s": 4.2689,
+          "sim_host_wall_s": 6.2104,
           "stall_time_s": 0.0607,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t0__i2",
+          "suite": "libero_spatial",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 2,
+          "success": true,
+          "steps": 100,
+          "wall_time_s": 5.0702,
+          "sim_host_wall_s": 7.7806,
+          "stall_time_s": 0.0605,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t1__i0",
+          "suite": "libero_spatial",
+          "task_id": 1,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 165,
+          "wall_time_s": 8.3268,
+          "sim_host_wall_s": 12.1524,
+          "stall_time_s": 0.0606,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t1__i1",
+          "suite": "libero_spatial",
+          "task_id": 1,
+          "level": "static",
+          "init_idx": 1,
+          "success": true,
+          "steps": 112,
+          "wall_time_s": 5.6694,
+          "sim_host_wall_s": 8.2581,
+          "stall_time_s": 0.0597,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t1__i2",
+          "suite": "libero_spatial",
+          "task_id": 1,
+          "level": "static",
+          "init_idx": 2,
+          "success": true,
+          "steps": 109,
+          "wall_time_s": 5.5222,
+          "sim_host_wall_s": 8.0182,
+          "stall_time_s": 0.0628,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_object__t0__i0",
+          "suite": "libero_object",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 131,
+          "wall_time_s": 6.6234,
+          "sim_host_wall_s": 9.702,
+          "stall_time_s": 0.0607,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_object__t0__i1",
+          "suite": "libero_object",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 1,
+          "success": true,
+          "steps": 139,
+          "wall_time_s": 7.0232,
+          "sim_host_wall_s": 10.5816,
+          "stall_time_s": 0.0601,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_object__t0__i2",
+          "suite": "libero_object",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 2,
+          "success": true,
+          "steps": 145,
+          "wall_time_s": 7.3282,
+          "sim_host_wall_s": 10.37,
+          "stall_time_s": 0.0598,
           "max_target_disp_m": 0.0
         },
         {
@@ -718,8 +763,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 117,
-          "wall_time_s": 5.9203,
-          "stall_time_s": 0.0621,
+          "wall_time_s": 5.922,
+          "sim_host_wall_s": 8.6014,
+          "stall_time_s": 0.0604,
           "max_target_disp_m": 0.0
         },
         {
@@ -729,9 +775,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 109,
-          "wall_time_s": 5.52,
-          "stall_time_s": 0.062,
+          "steps": 107,
+          "wall_time_s": 5.4209,
+          "sim_host_wall_s": 8.2233,
+          "stall_time_s": 0.0603,
           "max_target_disp_m": 0.0
         },
         {
@@ -741,15 +788,16 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 106,
-          "wall_time_s": 5.3675,
-          "stall_time_s": 0.0601,
+          "steps": 103,
+          "wall_time_s": 5.2203,
+          "sim_host_wall_s": 7.9201,
+          "stall_time_s": 0.0608,
           "max_target_disp_m": 0.0
         }
       ],
-      "fast_ttac_p50_ms": 23.59,
+      "fast_ttac_p50_ms": 23.03,
       "fast_ttac_p99_ms": 24.26,
-      "act_p50_us": 3161.53,
+      "act_p50_us": 2453.86,
       "underruns": 0
     },
     {
@@ -758,57 +806,57 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 1,
       "episodes": 24,
-      "successes": 13,
-      "success_rate_pct": 54.2,
-      "mean_time_to_success_s": 43.04,
-      "mean_steps_to_success": 144.7,
-      "mean_episode_wall_s": 52.49,
-      "total_wall_s": 1259.82,
-      "total_stall_s": 161.79,
-      "robot_stall_pct": 12.8,
-      "fleet_goodput_tasks_per_min": 0.62,
-      "max_target_disp_m": 0.4594,
+      "successes": 10,
+      "success_rate_pct": 41.7,
+      "mean_time_to_success_s": 13.04,
+      "mean_steps_to_success": 155.9,
+      "mean_episode_wall_s": 18.0,
+      "total_wall_s": 431.96,
+      "total_stall_s": 171.51,
+      "robot_stall_pct": 39.7,
+      "fleet_goodput_tasks_per_min": 1.39,
+      "max_target_disp_m": 0.3888,
       "per_group": {
         "l1": {
           "episodes": 8,
           "successes": 3,
           "success_rate_pct": 37.5,
-          "mean_time_to_success_s": 22.34,
-          "mean_steps_to_success": 144.7,
-          "mean_episode_wall_s": 33.03,
-          "total_wall_s": 264.27,
-          "total_stall_s": 58.67,
-          "robot_stall_pct": 22.2,
-          "fleet_goodput_tasks_per_min": 0.68,
-          "max_target_disp_m": 0.3466,
+          "mean_time_to_success_s": 10.71,
+          "mean_steps_to_success": 128.3,
+          "mean_episode_wall_s": 17.41,
+          "total_wall_s": 139.25,
+          "total_stall_s": 54.84,
+          "robot_stall_pct": 39.4,
+          "fleet_goodput_tasks_per_min": 1.29,
+          "max_target_disp_m": 0.2645,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
-          "successes": 6,
-          "success_rate_pct": 75.0,
-          "mean_time_to_success_s": 70.86,
-          "mean_steps_to_success": 155.2,
-          "mean_episode_wall_s": 93.14,
-          "total_wall_s": 745.11,
-          "total_stall_s": 50.14,
-          "robot_stall_pct": 6.7,
-          "fleet_goodput_tasks_per_min": 0.48,
-          "max_target_disp_m": 0.4158,
+          "successes": 4,
+          "success_rate_pct": 50.0,
+          "mean_time_to_success_s": 14.67,
+          "mean_steps_to_success": 176.8,
+          "mean_episode_wall_s": 18.06,
+          "total_wall_s": 144.46,
+          "total_stall_s": 56.94,
+          "robot_stall_pct": 39.4,
+          "fleet_goodput_tasks_per_min": 1.66,
+          "max_target_disp_m": 0.3042,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 4,
-          "success_rate_pct": 50.0,
-          "mean_time_to_success_s": 16.83,
-          "mean_steps_to_success": 129.0,
-          "mean_episode_wall_s": 31.31,
-          "total_wall_s": 250.45,
-          "total_stall_s": 52.98,
-          "robot_stall_pct": 21.2,
-          "fleet_goodput_tasks_per_min": 0.96,
-          "max_target_disp_m": 0.4594,
+          "successes": 3,
+          "success_rate_pct": 37.5,
+          "mean_time_to_success_s": 13.22,
+          "mean_steps_to_success": 155.7,
+          "mean_episode_wall_s": 18.53,
+          "total_wall_s": 148.25,
+          "total_stall_s": 59.73,
+          "robot_stall_pct": 40.3,
+          "fleet_goodput_tasks_per_min": 1.21,
+          "max_target_disp_m": 0.3888,
           "speed_mps": 0.09
         }
       },
@@ -819,11 +867,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 123,
-          "wall_time_s": 13.1203,
-          "stall_time_s": 4.4029,
-          "max_target_disp_m": 0.1308
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.5722,
+          "sim_host_wall_s": 34.4465,
+          "stall_time_s": 8.5474,
+          "max_target_disp_m": 0.0853
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -831,11 +880,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 27.0791,
-          "stall_time_s": 8.6667,
-          "max_target_disp_m": 0.1314
+          "success": true,
+          "steps": 212,
+          "wall_time_s": 17.8705,
+          "sim_host_wall_s": 27.7513,
+          "stall_time_s": 7.2463,
+          "max_target_disp_m": 0.1353
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -845,9 +895,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 45.2901,
-          "stall_time_s": 8.7144,
-          "max_target_disp_m": 0.1179
+          "wall_time_s": 21.2976,
+          "sim_host_wall_s": 50.992,
+          "stall_time_s": 8.2719,
+          "max_target_disp_m": 0.2243
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -857,9 +908,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 37.3889,
-          "stall_time_s": 8.6536,
-          "max_target_disp_m": 0.1379
+          "wall_time_s": 21.4794,
+          "sim_host_wall_s": 51.7321,
+          "stall_time_s": 8.4533,
+          "max_target_disp_m": 0.1147
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -868,10 +920,11 @@
           "level": "l1",
           "init_idx": 0,
           "success": true,
-          "steps": 83,
-          "wall_time_s": 14.3331,
-          "stall_time_s": 3.042,
-          "max_target_disp_m": 0.17
+          "steps": 84,
+          "wall_time_s": 7.0137,
+          "sim_host_wall_s": 16.9814,
+          "stall_time_s": 2.8063,
+          "max_target_disp_m": 0.1407
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -879,11 +932,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 43.9523,
-          "stall_time_s": 8.7864,
-          "max_target_disp_m": 0.2059
+          "success": true,
+          "steps": 89,
+          "wall_time_s": 7.2391,
+          "sim_host_wall_s": 17.5166,
+          "stall_time_s": 2.7811,
+          "max_target_disp_m": 0.1893
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -891,11 +945,12 @@
           "task_id": 1,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 228,
-          "wall_time_s": 39.5598,
-          "stall_time_s": 7.7114,
-          "max_target_disp_m": 0.3466
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.3518,
+          "sim_host_wall_s": 54.0074,
+          "stall_time_s": 8.3286,
+          "max_target_disp_m": 0.1272
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -905,9 +960,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 43.546,
-          "stall_time_s": 8.6976,
-          "max_target_disp_m": 0.2429
+          "wall_time_s": 21.4264,
+          "sim_host_wall_s": 53.2588,
+          "stall_time_s": 8.4002,
+          "max_target_disp_m": 0.2645
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -916,10 +972,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 114,
-          "wall_time_s": 12.784,
-          "stall_time_s": 4.0095,
-          "max_target_disp_m": 0.1211
+          "steps": 179,
+          "wall_time_s": 14.7682,
+          "sim_host_wall_s": 23.647,
+          "stall_time_s": 5.7993,
+          "max_target_disp_m": 0.1379
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -927,11 +984,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": true,
-          "steps": 224,
-          "wall_time_s": 25.4882,
-          "stall_time_s": 7.8594,
-          "max_target_disp_m": 0.1225
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.4375,
+          "sim_host_wall_s": 35.2525,
+          "stall_time_s": 8.413,
+          "max_target_disp_m": 0.1543
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -941,9 +999,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 158.814,
-          "stall_time_s": 8.6864,
-          "max_target_disp_m": 0.3536
+          "wall_time_s": 21.4039,
+          "sim_host_wall_s": 140.7775,
+          "stall_time_s": 8.3781,
+          "max_target_disp_m": 0.1524
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -951,11 +1010,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": true,
-          "steps": 187,
-          "wall_time_s": 114.4361,
-          "stall_time_s": 6.5352,
-          "max_target_disp_m": 0.4158
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.1841,
+          "sim_host_wall_s": 131.5137,
+          "stall_time_s": 8.1615,
+          "max_target_disp_m": 0.2013
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -964,10 +1024,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 145,
-          "wall_time_s": 91.3111,
-          "stall_time_s": 5.0494,
-          "max_target_disp_m": 0.2024
+          "steps": 231,
+          "wall_time_s": 19.0388,
+          "sim_host_wall_s": 123.8566,
+          "stall_time_s": 7.4659,
+          "max_target_disp_m": 0.3042
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -976,10 +1037,11 @@
           "level": "l2",
           "init_idx": 1,
           "success": true,
-          "steps": 101,
-          "wall_time_s": 82.4957,
-          "stall_time_s": 3.8028,
-          "max_target_disp_m": 0.1703
+          "steps": 102,
+          "wall_time_s": 8.6805,
+          "sim_host_wall_s": 69.5125,
+          "stall_time_s": 3.5702,
+          "max_target_disp_m": 0.1725
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -987,11 +1049,12 @@
           "task_id": 1,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 161.1568,
-          "stall_time_s": 8.8116,
-          "max_target_disp_m": 0.2344
+          "success": true,
+          "steps": 195,
+          "wall_time_s": 16.1738,
+          "sim_host_wall_s": 106.5325,
+          "stall_time_s": 6.4065,
+          "max_target_disp_m": 0.2726
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -999,11 +1062,12 @@
           "task_id": 1,
           "level": "l2",
           "init_idx": 1,
-          "success": true,
-          "steps": 160,
-          "wall_time_s": 98.6228,
-          "stall_time_s": 5.3817,
-          "max_target_disp_m": 0.2031
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.7752,
+          "sim_host_wall_s": 143.5897,
+          "stall_time_s": 8.7486,
+          "max_target_disp_m": 0.1535
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -1012,10 +1076,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 232,
-          "wall_time_s": 25.1126,
-          "stall_time_s": 8.2608,
-          "max_target_disp_m": 0.1322
+          "steps": 175,
+          "wall_time_s": 14.7529,
+          "sim_host_wall_s": 22.7611,
+          "stall_time_s": 5.985,
+          "max_target_disp_m": 0.1035
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -1023,11 +1088,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 1,
-          "success": true,
-          "steps": 110,
-          "wall_time_s": 11.4607,
-          "stall_time_s": 3.7527,
-          "max_target_disp_m": 0.1407
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.6699,
+          "sim_host_wall_s": 34.1609,
+          "stall_time_s": 8.6451,
+          "max_target_disp_m": 0.0595
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -1037,9 +1103,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 44.9759,
-          "stall_time_s": 8.7732,
-          "max_target_disp_m": 0.1667
+          "wall_time_s": 21.6086,
+          "sim_host_wall_s": 53.4598,
+          "stall_time_s": 8.5834,
+          "max_target_disp_m": 0.1616
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -1049,9 +1116,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 44.9233,
-          "stall_time_s": 8.7786,
-          "max_target_disp_m": 0.3507
+          "wall_time_s": 21.6901,
+          "sim_host_wall_s": 54.2808,
+          "stall_time_s": 8.664,
+          "max_target_disp_m": 0.3626
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -1060,10 +1128,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 89,
-          "wall_time_s": 15.4941,
-          "stall_time_s": 3.0028,
-          "max_target_disp_m": 0.1779
+          "steps": 90,
+          "wall_time_s": 7.6374,
+          "sim_host_wall_s": 19.7738,
+          "stall_time_s": 3.1294,
+          "max_target_disp_m": 0.1735
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -1071,11 +1140,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 1,
-          "success": true,
-          "steps": 85,
-          "wall_time_s": 15.2446,
-          "stall_time_s": 3.0372,
-          "max_target_disp_m": 0.2715
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.8167,
+          "sim_host_wall_s": 56.5195,
+          "stall_time_s": 8.7908,
+          "max_target_disp_m": 0.0889
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -1083,11 +1153,12 @@
           "task_id": 1,
           "level": "l3",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 45.5387,
-          "stall_time_s": 8.6227,
-          "max_target_disp_m": 0.3056
+          "success": true,
+          "steps": 202,
+          "wall_time_s": 17.2554,
+          "sim_host_wall_s": 44.6025,
+          "stall_time_s": 7.135,
+          "max_target_disp_m": 0.266
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -1097,17 +1168,18 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 47.6966,
-          "stall_time_s": 8.7548,
-          "max_target_disp_m": 0.4594
+          "wall_time_s": 21.8211,
+          "sim_host_wall_s": 56.6519,
+          "stall_time_s": 8.7964,
+          "max_target_disp_m": 0.3888
         }
       ],
-      "chunk_infer_p50_ms": 332.64,
-      "chunk_infer_p99_ms": 368.7,
-      "paired_common_successes": 7,
+      "chunk_infer_p50_ms": 326.4,
+      "chunk_infer_p99_ms": 371.86,
+      "paired_common_successes": 3,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 17.37,
-        "tempo_s": 7.28,
+        "baseline_s": 15.23,
+        "tempo_s": 6.36,
         "tempo_speedup_x": 2.39
       }
     },
@@ -1119,55 +1191,55 @@
       "episodes": 24,
       "successes": 10,
       "success_rate_pct": 41.7,
-      "mean_time_to_success_s": 25.46,
-      "mean_steps_to_success": 132.2,
-      "mean_episode_wall_s": 58.41,
-      "total_wall_s": 1401.79,
-      "total_stall_s": 133.98,
-      "robot_stall_pct": 9.6,
-      "fleet_goodput_tasks_per_min": 0.43,
-      "max_target_disp_m": 0.4375,
+      "mean_time_to_success_s": 12.2,
+      "mean_steps_to_success": 158.1,
+      "mean_episode_wall_s": 16.77,
+      "total_wall_s": 402.44,
+      "total_stall_s": 140.87,
+      "robot_stall_pct": 35.0,
+      "fleet_goodput_tasks_per_min": 1.49,
+      "max_target_disp_m": 0.42,
       "per_group": {
         "l1": {
           "episodes": 8,
-          "successes": 5,
-          "success_rate_pct": 62.5,
-          "mean_time_to_success_s": 16.3,
-          "mean_steps_to_success": 127.6,
-          "mean_episode_wall_s": 25.2,
-          "total_wall_s": 201.63,
-          "total_stall_s": 38.47,
-          "robot_stall_pct": 19.1,
-          "fleet_goodput_tasks_per_min": 1.49,
-          "max_target_disp_m": 0.4126,
+          "successes": 3,
+          "success_rate_pct": 37.5,
+          "mean_time_to_success_s": 13.13,
+          "mean_steps_to_success": 168.0,
+          "mean_episode_wall_s": 17.57,
+          "total_wall_s": 140.57,
+          "total_stall_s": 50.18,
+          "robot_stall_pct": 35.7,
+          "fleet_goodput_tasks_per_min": 1.28,
+          "max_target_disp_m": 0.3393,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
           "successes": 3,
           "success_rate_pct": 37.5,
-          "mean_time_to_success_s": 50.48,
-          "mean_steps_to_success": 149.7,
-          "mean_episode_wall_s": 116.56,
-          "total_wall_s": 932.44,
-          "total_stall_s": 47.36,
-          "robot_stall_pct": 5.1,
-          "fleet_goodput_tasks_per_min": 0.19,
-          "max_target_disp_m": 0.2717,
+          "mean_time_to_success_s": 12.88,
+          "mean_steps_to_success": 165.7,
+          "mean_episode_wall_s": 17.39,
+          "total_wall_s": 139.11,
+          "total_stall_s": 49.08,
+          "robot_stall_pct": 35.3,
+          "fleet_goodput_tasks_per_min": 1.29,
+          "max_target_disp_m": 0.4154,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 2,
-          "success_rate_pct": 25.0,
-          "mean_time_to_success_s": 10.85,
-          "mean_steps_to_success": 117.5,
-          "mean_episode_wall_s": 33.46,
-          "total_wall_s": 267.72,
-          "total_stall_s": 48.15,
-          "robot_stall_pct": 18.0,
-          "fleet_goodput_tasks_per_min": 0.45,
-          "max_target_disp_m": 0.4375,
+          "successes": 4,
+          "success_rate_pct": 50.0,
+          "mean_time_to_success_s": 10.98,
+          "mean_steps_to_success": 145.0,
+          "mean_episode_wall_s": 15.35,
+          "total_wall_s": 122.76,
+          "total_stall_s": 41.61,
+          "robot_stall_pct": 33.9,
+          "fleet_goodput_tasks_per_min": 1.95,
+          "max_target_disp_m": 0.42,
           "speed_mps": 0.09
         }
       },
@@ -1178,11 +1250,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 110,
-          "wall_time_s": 10.2652,
-          "stall_time_s": 3.0307,
-          "max_target_disp_m": 0.1442
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.3532,
+          "sim_host_wall_s": 34.4392,
+          "stall_time_s": 7.328,
+          "max_target_disp_m": 0.1392
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -1191,10 +1264,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 112,
-          "wall_time_s": 10.4996,
-          "stall_time_s": 3.0824,
-          "max_target_disp_m": 0.1314
+          "steps": 116,
+          "wall_time_s": 8.9677,
+          "sim_host_wall_s": 14.006,
+          "stall_time_s": 3.1569,
+          "max_target_disp_m": 0.1084
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -1204,9 +1278,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 39.2036,
-          "stall_time_s": 7.0103,
-          "max_target_disp_m": 0.137
+          "wall_time_s": 20.2255,
+          "sim_host_wall_s": 51.0163,
+          "stall_time_s": 7.1991,
+          "max_target_disp_m": 0.1189
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -1214,11 +1289,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": true,
-          "steps": 149,
-          "wall_time_s": 19.957,
-          "stall_time_s": 4.0912,
-          "max_target_disp_m": 0.4126
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.1615,
+          "sim_host_wall_s": 50.2979,
+          "stall_time_s": 7.1342,
+          "max_target_disp_m": 0.1197
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -1226,11 +1302,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 132,
-          "wall_time_s": 20.1798,
-          "stall_time_s": 3.5682,
-          "max_target_disp_m": 0.1566
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.1784,
+          "sim_host_wall_s": 48.86,
+          "stall_time_s": 7.1515,
+          "max_target_disp_m": 0.3393
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -1239,10 +1316,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 135,
-          "wall_time_s": 20.6103,
-          "stall_time_s": 3.6691,
-          "max_target_disp_m": 0.1802
+          "steps": 235,
+          "wall_time_s": 18.38,
+          "sim_host_wall_s": 46.7516,
+          "stall_time_s": 6.6059,
+          "max_target_disp_m": 0.1542
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -1252,9 +1330,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 42.2163,
-          "stall_time_s": 7.0821,
-          "max_target_disp_m": 0.1499
+          "wall_time_s": 20.2549,
+          "sim_host_wall_s": 52.3523,
+          "stall_time_s": 7.2285,
+          "max_target_disp_m": 0.1496
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -1262,11 +1341,12 @@
           "task_id": 1,
           "level": "l1",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 38.7002,
-          "stall_time_s": 6.9332,
-          "max_target_disp_m": 0.2319
+          "success": true,
+          "steps": 153,
+          "wall_time_s": 12.0463,
+          "sim_host_wall_s": 30.7481,
+          "stall_time_s": 4.3806,
+          "max_target_disp_m": 0.1892
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -1275,10 +1355,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 116,
-          "wall_time_s": 11.3276,
-          "stall_time_s": 3.1356,
-          "max_target_disp_m": 0.1075
+          "steps": 118,
+          "wall_time_s": 9.0778,
+          "sim_host_wall_s": 14.8097,
+          "stall_time_s": 3.167,
+          "max_target_disp_m": 0.0961
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -1286,11 +1367,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": true,
-          "steps": 107,
-          "wall_time_s": 10.6221,
-          "stall_time_s": 2.961,
-          "max_target_disp_m": 0.1095
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.0455,
+          "sim_host_wall_s": 35.6977,
+          "stall_time_s": 7.0208,
+          "max_target_disp_m": 0.1149
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -1300,9 +1382,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 148.492,
-          "stall_time_s": 6.9895,
-          "max_target_disp_m": 0.1384
+          "wall_time_s": 20.416,
+          "sim_host_wall_s": 142.0987,
+          "stall_time_s": 7.3897,
+          "max_target_disp_m": 0.1413
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -1310,11 +1393,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 148.2604,
-          "stall_time_s": 7.0511,
-          "max_target_disp_m": 0.1491
+          "success": true,
+          "steps": 225,
+          "wall_time_s": 17.5407,
+          "sim_host_wall_s": 114.4234,
+          "stall_time_s": 6.2679,
+          "max_target_disp_m": 0.4154
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -1323,10 +1407,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 226,
-          "wall_time_s": 129.4778,
-          "stall_time_s": 6.1631,
-          "max_target_disp_m": 0.2717
+          "steps": 154,
+          "wall_time_s": 12.028,
+          "sim_host_wall_s": 79.7449,
+          "stall_time_s": 4.3118,
+          "max_target_disp_m": 0.2749
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -1336,9 +1421,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 184.3727,
-          "stall_time_s": 6.9823,
-          "max_target_disp_m": 0.1705
+          "wall_time_s": 20.3866,
+          "sim_host_wall_s": 163.1644,
+          "stall_time_s": 7.3591,
+          "max_target_disp_m": 0.1744
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -1348,9 +1434,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 148.7923,
-          "stall_time_s": 7.0299,
-          "max_target_disp_m": 0.1907
+          "wall_time_s": 19.891,
+          "sim_host_wall_s": 130.5282,
+          "stall_time_s": 6.8643,
+          "max_target_disp_m": 0.1411
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -1360,9 +1447,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 151.0954,
-          "stall_time_s": 7.0516,
-          "max_target_disp_m": 0.1678
+          "wall_time_s": 19.7206,
+          "sim_host_wall_s": 128.6487,
+          "stall_time_s": 6.6963,
+          "max_target_disp_m": 0.1821
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -1371,10 +1459,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 123,
-          "wall_time_s": 11.3926,
-          "stall_time_s": 3.3342,
-          "max_target_disp_m": 0.1304
+          "steps": 118,
+          "wall_time_s": 8.9026,
+          "sim_host_wall_s": 13.6255,
+          "stall_time_s": 2.9917,
+          "max_target_disp_m": 0.0964
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -1383,10 +1472,11 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 112,
-          "wall_time_s": 10.3141,
-          "stall_time_s": 3.0024,
-          "max_target_disp_m": 0.1331
+          "steps": 111,
+          "wall_time_s": 8.418,
+          "sim_host_wall_s": 12.7725,
+          "stall_time_s": 2.8579,
+          "max_target_disp_m": 0.1355
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -1396,9 +1486,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 38.1853,
-          "stall_time_s": 6.996,
-          "max_target_disp_m": 0.169
+          "wall_time_s": 19.6304,
+          "sim_host_wall_s": 47.5231,
+          "stall_time_s": 6.6069,
+          "max_target_disp_m": 0.1394
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -1408,9 +1499,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 41.9169,
-          "stall_time_s": 6.9639,
-          "max_target_disp_m": 0.1757
+          "wall_time_s": 19.8331,
+          "sim_host_wall_s": 50.1126,
+          "stall_time_s": 6.8078,
+          "max_target_disp_m": 0.1703
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -1420,9 +1512,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 42.0172,
-          "stall_time_s": 6.9571,
-          "max_target_disp_m": 0.121
+          "wall_time_s": 19.7497,
+          "sim_host_wall_s": 50.1393,
+          "stall_time_s": 6.7258,
+          "max_target_disp_m": 0.1212
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -1432,9 +1525,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 42.3241,
-          "stall_time_s": 6.999,
-          "max_target_disp_m": 0.0797
+          "wall_time_s": 19.6235,
+          "sim_host_wall_s": 48.4582,
+          "stall_time_s": 6.5979,
+          "max_target_disp_m": 0.3153
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -1442,11 +1536,12 @@
           "task_id": 1,
           "level": "l3",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 41.0218,
-          "stall_time_s": 6.9761,
-          "max_target_disp_m": 0.3155
+          "success": true,
+          "steps": 164,
+          "wall_time_s": 12.3562,
+          "sim_host_wall_s": 30.4935,
+          "stall_time_s": 4.1415,
+          "max_target_disp_m": 0.2411
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -1454,20 +1549,21 @@
           "task_id": 1,
           "level": "l3",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 40.5479,
-          "stall_time_s": 6.9204,
-          "max_target_disp_m": 0.4375
+          "success": true,
+          "steps": 187,
+          "wall_time_s": 14.2507,
+          "sim_host_wall_s": 35.7881,
+          "stall_time_s": 4.882,
+          "max_target_disp_m": 0.42
         }
       ],
-      "chunk_infer_p50_ms": 105.75,
-      "chunk_infer_p99_ms": 123.01,
-      "paired_common_successes": 7,
+      "chunk_infer_p50_ms": 107.2,
+      "chunk_infer_p99_ms": 130.59,
+      "paired_common_successes": 4,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 13.56,
-        "tempo_s": 7.26,
-        "tempo_speedup_x": 1.87
+        "baseline_s": 11.07,
+        "tempo_s": 6.09,
+        "tempo_speedup_x": 1.82
       }
     },
     {
@@ -1478,55 +1574,55 @@
       "episodes": 24,
       "successes": 3,
       "success_rate_pct": 12.5,
-      "mean_time_to_success_s": 7.76,
-      "mean_steps_to_success": 139.7,
-      "mean_episode_wall_s": 45.32,
-      "total_wall_s": 1087.76,
-      "total_stall_s": 10.56,
-      "robot_stall_pct": 1.0,
-      "fleet_goodput_tasks_per_min": 0.17,
-      "max_target_disp_m": 0.249,
+      "mean_time_to_success_s": 7.56,
+      "mean_steps_to_success": 143.7,
+      "mean_episode_wall_s": 12.67,
+      "total_wall_s": 304.14,
+      "total_stall_s": 9.01,
+      "robot_stall_pct": 3.0,
+      "fleet_goodput_tasks_per_min": 0.59,
+      "max_target_disp_m": 0.3899,
       "per_group": {
         "l1": {
-          "episodes": 8,
-          "successes": 2,
-          "success_rate_pct": 25.0,
-          "mean_time_to_success_s": 7.76,
-          "mean_steps_to_success": 140.5,
-          "mean_episode_wall_s": 22.54,
-          "total_wall_s": 180.31,
-          "total_stall_s": 3.4,
-          "robot_stall_pct": 1.9,
-          "fleet_goodput_tasks_per_min": 0.67,
-          "max_target_disp_m": 0.1183,
-          "speed_mps": 0.03
-        },
-        "l2": {
           "episodes": 8,
           "successes": 0,
           "success_rate_pct": 0.0,
           "mean_time_to_success_s": null,
           "mean_steps_to_success": null,
-          "mean_episode_wall_s": 88.99,
-          "total_wall_s": 711.94,
-          "total_stall_s": 3.65,
-          "robot_stall_pct": 0.5,
+          "mean_episode_wall_s": 13.39,
+          "total_wall_s": 107.15,
+          "total_stall_s": 2.94,
+          "robot_stall_pct": 2.7,
           "fleet_goodput_tasks_per_min": 0.0,
-          "max_target_disp_m": 0.249,
+          "max_target_disp_m": 0.3576,
+          "speed_mps": 0.03
+        },
+        "l2": {
+          "episodes": 8,
+          "successes": 1,
+          "success_rate_pct": 12.5,
+          "mean_time_to_success_s": 6.01,
+          "mean_steps_to_success": 113.0,
+          "mean_episode_wall_s": 12.49,
+          "total_wall_s": 99.96,
+          "total_stall_s": 3.12,
+          "robot_stall_pct": 3.1,
+          "fleet_goodput_tasks_per_min": 0.6,
+          "max_target_disp_m": 0.1903,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 1,
-          "success_rate_pct": 12.5,
-          "mean_time_to_success_s": 7.75,
-          "mean_steps_to_success": 138.0,
-          "mean_episode_wall_s": 24.44,
-          "total_wall_s": 195.5,
-          "total_stall_s": 3.52,
-          "robot_stall_pct": 1.8,
-          "fleet_goodput_tasks_per_min": 0.31,
-          "max_target_disp_m": 0.1785,
+          "successes": 2,
+          "success_rate_pct": 25.0,
+          "mean_time_to_success_s": 8.33,
+          "mean_steps_to_success": 159.0,
+          "mean_episode_wall_s": 12.13,
+          "total_wall_s": 97.03,
+          "total_stall_s": 2.94,
+          "robot_stall_pct": 3.0,
+          "fleet_goodput_tasks_per_min": 1.24,
+          "max_target_disp_m": 0.3899,
           "speed_mps": 0.09
         }
       },
@@ -1537,11 +1633,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 138,
-          "wall_time_s": 7.7391,
-          "stall_time_s": 0.4577,
-          "max_target_disp_m": 0.0751
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4208,
+          "sim_host_wall_s": 22.8829,
+          "stall_time_s": 0.3914,
+          "max_target_disp_m": 0.0649
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -1549,11 +1646,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": true,
-          "steps": 143,
-          "wall_time_s": 7.7856,
-          "stall_time_s": 0.3489,
-          "max_target_disp_m": 0.1132
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4228,
+          "sim_host_wall_s": 22.67,
+          "stall_time_s": 0.396,
+          "max_target_disp_m": 0.046
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -1563,9 +1661,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 26.5785,
-          "stall_time_s": 0.4445,
-          "max_target_disp_m": 0.1154
+          "wall_time_s": 13.3746,
+          "sim_host_wall_s": 36.0183,
+          "stall_time_s": 0.3495,
+          "max_target_disp_m": 0.2099
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -1575,9 +1674,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 26.4104,
-          "stall_time_s": 0.4257,
-          "max_target_disp_m": 0.1154
+          "wall_time_s": 13.3826,
+          "sim_host_wall_s": 36.7527,
+          "stall_time_s": 0.3575,
+          "max_target_disp_m": 0.1437
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -1587,9 +1687,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 27.4458,
-          "stall_time_s": 0.4492,
-          "max_target_disp_m": 0.1062
+          "wall_time_s": 13.3433,
+          "sim_host_wall_s": 34.6528,
+          "stall_time_s": 0.3185,
+          "max_target_disp_m": 0.221
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -1599,9 +1700,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 27.0614,
-          "stall_time_s": 0.4112,
-          "max_target_disp_m": 0.0918
+          "wall_time_s": 13.3966,
+          "sim_host_wall_s": 35.7589,
+          "stall_time_s": 0.3723,
+          "max_target_disp_m": 0.1172
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -1611,9 +1713,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.3748,
-          "stall_time_s": 0.4476,
-          "max_target_disp_m": 0.1178
+          "wall_time_s": 13.4315,
+          "sim_host_wall_s": 36.8645,
+          "stall_time_s": 0.4052,
+          "max_target_disp_m": 0.3013
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -1623,9 +1726,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.9168,
-          "stall_time_s": 0.415,
-          "max_target_disp_m": 0.1183
+          "wall_time_s": 13.3805,
+          "sim_host_wall_s": 36.3788,
+          "stall_time_s": 0.3543,
+          "max_target_disp_m": 0.3576
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -1633,11 +1737,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 14.0441,
-          "stall_time_s": 0.4151,
-          "max_target_disp_m": 0.1012
+          "success": true,
+          "steps": 113,
+          "wall_time_s": 6.0082,
+          "sim_host_wall_s": 9.6794,
+          "stall_time_s": 0.348,
+          "max_target_disp_m": 0.1224
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -1647,9 +1752,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 14.236,
-          "stall_time_s": 0.4703,
-          "max_target_disp_m": 0.249
+          "wall_time_s": 13.3962,
+          "sim_host_wall_s": 22.8215,
+          "stall_time_s": 0.3709,
+          "max_target_disp_m": 0.0987
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -1659,9 +1765,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 107.7525,
-          "stall_time_s": 0.4775,
-          "max_target_disp_m": 0.139
+          "wall_time_s": 13.4134,
+          "sim_host_wall_s": 90.2047,
+          "stall_time_s": 0.3888,
+          "max_target_disp_m": 0.1389
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -1671,9 +1778,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 108.0288,
-          "stall_time_s": 0.4637,
-          "max_target_disp_m": 0.121
+          "wall_time_s": 13.4095,
+          "sim_host_wall_s": 91.1552,
+          "stall_time_s": 0.3854,
+          "max_target_disp_m": 0.1199
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -1683,9 +1791,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 109.5205,
-          "stall_time_s": 0.4697,
-          "max_target_disp_m": 0.0917
+          "wall_time_s": 13.4438,
+          "sim_host_wall_s": 91.3461,
+          "stall_time_s": 0.4192,
+          "max_target_disp_m": 0.1112
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -1695,9 +1804,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 137.3815,
-          "stall_time_s": 0.4617,
-          "max_target_disp_m": 0.1159
+          "wall_time_s": 13.4179,
+          "sim_host_wall_s": 110.9215,
+          "stall_time_s": 0.3929,
+          "max_target_disp_m": 0.159
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -1707,9 +1817,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 109.2248,
-          "stall_time_s": 0.4445,
-          "max_target_disp_m": 0.1263
+          "wall_time_s": 13.4413,
+          "sim_host_wall_s": 91.7358,
+          "stall_time_s": 0.4161,
+          "max_target_disp_m": 0.1903
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -1719,9 +1830,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 111.7503,
-          "stall_time_s": 0.4449,
-          "max_target_disp_m": 0.1584
+          "wall_time_s": 13.4272,
+          "sim_host_wall_s": 90.9402,
+          "stall_time_s": 0.4014,
+          "max_target_disp_m": 0.1881
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -1730,10 +1842,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 138,
-          "wall_time_s": 7.7526,
-          "stall_time_s": 0.44,
-          "max_target_disp_m": 0.084
+          "steps": 115,
+          "wall_time_s": 6.1686,
+          "sim_host_wall_s": 9.9018,
+          "stall_time_s": 0.4049,
+          "max_target_disp_m": 0.1022
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -1741,11 +1854,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 14.0971,
-          "stall_time_s": 0.4886,
-          "max_target_disp_m": 0.039
+          "success": true,
+          "steps": 203,
+          "wall_time_s": 10.493,
+          "sim_host_wall_s": 17.3749,
+          "stall_time_s": 0.3224,
+          "max_target_disp_m": 0.1187
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -1755,9 +1869,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 27.7871,
-          "stall_time_s": 0.4563,
-          "max_target_disp_m": 0.1439
+          "wall_time_s": 13.3787,
+          "sim_host_wall_s": 33.3766,
+          "stall_time_s": 0.3547,
+          "max_target_disp_m": 0.1413
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -1767,8 +1882,9 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.2829,
-          "stall_time_s": 0.3923,
+          "wall_time_s": 13.4148,
+          "sim_host_wall_s": 35.043,
+          "stall_time_s": 0.391,
           "max_target_disp_m": 0.1716
         },
         {
@@ -1779,9 +1895,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.9311,
-          "stall_time_s": 0.4126,
-          "max_target_disp_m": 0.1132
+          "wall_time_s": 13.3487,
+          "sim_host_wall_s": 35.92,
+          "stall_time_s": 0.3233,
+          "max_target_disp_m": 0.127
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -1791,9 +1908,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 29.3158,
-          "stall_time_s": 0.4469,
-          "max_target_disp_m": 0.0821
+          "wall_time_s": 13.4166,
+          "sim_host_wall_s": 36.7779,
+          "stall_time_s": 0.3922,
+          "max_target_disp_m": 0.1261
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -1803,9 +1921,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 29.6698,
-          "stall_time_s": 0.4465,
-          "max_target_disp_m": 0.1785
+          "wall_time_s": 13.4222,
+          "sim_host_wall_s": 37.0157,
+          "stall_time_s": 0.3972,
+          "max_target_disp_m": 0.1809
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -1815,20 +1934,21 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 29.668,
-          "stall_time_s": 0.4329,
-          "max_target_disp_m": 0.1405
+          "wall_time_s": 13.3827,
+          "sim_host_wall_s": 39.4646,
+          "stall_time_s": 0.3574,
+          "max_target_disp_m": 0.3899
         }
       ],
-      "fast_ttac_p50_ms": 1543.08,
-      "fast_ttac_p99_ms": 6436.4,
-      "act_p50_us": 4398.09,
-      "underruns": 2277,
-      "paired_common_successes": 3,
+      "fast_ttac_p50_ms": 588.97,
+      "fast_ttac_p99_ms": 2000.71,
+      "act_p50_us": 3501.3,
+      "underruns": 678,
+      "paired_common_successes": 2,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 7.76,
-        "tempo_s": 6.88,
-        "tempo_speedup_x": 1.13
+        "baseline_s": 6.09,
+        "tempo_s": 6.17,
+        "tempo_speedup_x": 0.99
       }
     },
     {
@@ -1837,57 +1957,57 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 1,
       "episodes": 24,
-      "successes": 12,
-      "success_rate_pct": 50.0,
-      "mean_time_to_success_s": 11.57,
-      "mean_steps_to_success": 148.3,
-      "mean_episode_wall_s": 35.88,
-      "total_wall_s": 861.04,
-      "total_stall_s": 1.63,
-      "robot_stall_pct": 0.2,
-      "fleet_goodput_tasks_per_min": 0.84,
-      "max_target_disp_m": 0.4583,
+      "successes": 11,
+      "success_rate_pct": 45.8,
+      "mean_time_to_success_s": 6.49,
+      "mean_steps_to_success": 128.3,
+      "mean_episode_wall_s": 10.07,
+      "total_wall_s": 241.65,
+      "total_stall_s": 1.65,
+      "robot_stall_pct": 0.7,
+      "fleet_goodput_tasks_per_min": 2.73,
+      "max_target_disp_m": 0.4611,
       "per_group": {
         "l1": {
           "episodes": 8,
-          "successes": 5,
-          "success_rate_pct": 62.5,
-          "mean_time_to_success_s": 10.96,
-          "mean_steps_to_success": 144.4,
-          "mean_episode_wall_s": 15.45,
-          "total_wall_s": 123.63,
-          "total_stall_s": 0.51,
-          "robot_stall_pct": 0.4,
-          "fleet_goodput_tasks_per_min": 2.43,
-          "max_target_disp_m": 0.4257,
+          "successes": 3,
+          "success_rate_pct": 37.5,
+          "mean_time_to_success_s": 6.36,
+          "mean_steps_to_success": 125.7,
+          "mean_episode_wall_s": 10.57,
+          "total_wall_s": 84.52,
+          "total_stall_s": 0.52,
+          "robot_stall_pct": 0.6,
+          "fleet_goodput_tasks_per_min": 2.13,
+          "max_target_disp_m": 0.4611,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
-          "successes": 2,
-          "success_rate_pct": 25.0,
-          "mean_time_to_success_s": 6.15,
+          "successes": 4,
+          "success_rate_pct": 50.0,
+          "mean_time_to_success_s": 6.11,
           "mean_steps_to_success": 120.5,
-          "mean_episode_wall_s": 75.67,
-          "total_wall_s": 605.35,
-          "total_stall_s": 0.6,
-          "robot_stall_pct": 0.1,
-          "fleet_goodput_tasks_per_min": 0.2,
-          "max_target_disp_m": 0.2716,
+          "mean_episode_wall_s": 9.61,
+          "total_wall_s": 76.86,
+          "total_stall_s": 0.61,
+          "robot_stall_pct": 0.8,
+          "fleet_goodput_tasks_per_min": 3.12,
+          "max_target_disp_m": 0.3194,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 5,
-          "success_rate_pct": 62.5,
-          "mean_time_to_success_s": 14.34,
-          "mean_steps_to_success": 163.4,
-          "mean_episode_wall_s": 16.51,
-          "total_wall_s": 132.06,
-          "total_stall_s": 0.51,
-          "robot_stall_pct": 0.4,
-          "fleet_goodput_tasks_per_min": 2.27,
-          "max_target_disp_m": 0.4583,
+          "successes": 4,
+          "success_rate_pct": 50.0,
+          "mean_time_to_success_s": 6.98,
+          "mean_steps_to_success": 138.0,
+          "mean_episode_wall_s": 10.03,
+          "total_wall_s": 80.27,
+          "total_stall_s": 0.52,
+          "robot_stall_pct": 0.6,
+          "fleet_goodput_tasks_per_min": 2.99,
+          "max_target_disp_m": 0.4603,
           "speed_mps": 0.09
         }
       },
@@ -1899,10 +2019,11 @@
           "level": "l1",
           "init_idx": 0,
           "success": true,
-          "steps": 121,
-          "wall_time_s": 6.1664,
-          "stall_time_s": 0.0647,
-          "max_target_disp_m": 0.1389
+          "steps": 120,
+          "wall_time_s": 6.0722,
+          "sim_host_wall_s": 8.658,
+          "stall_time_s": 0.0617,
+          "max_target_disp_m": 0.1469
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -1910,11 +2031,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": true,
-          "steps": 161,
-          "wall_time_s": 8.1658,
-          "stall_time_s": 0.0631,
-          "max_target_disp_m": 0.1352
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.0828,
+          "sim_host_wall_s": 20.3625,
+          "stall_time_s": 0.0598,
+          "max_target_disp_m": 0.045
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -1924,9 +2046,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 24.017,
-          "stall_time_s": 0.0639,
-          "max_target_disp_m": 0.3418
+          "wall_time_s": 13.0902,
+          "sim_host_wall_s": 33.8045,
+          "stall_time_s": 0.0653,
+          "max_target_disp_m": 0.3652
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -1936,9 +2059,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 19.6326,
-          "stall_time_s": 0.0633,
-          "max_target_disp_m": 0.3436
+          "wall_time_s": 13.0874,
+          "sim_host_wall_s": 31.813,
+          "stall_time_s": 0.0643,
+          "max_target_disp_m": 0.4611
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -1946,11 +2070,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 78,
-          "wall_time_s": 7.5056,
-          "stall_time_s": 0.0632,
-          "max_target_disp_m": 0.1367
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.0935,
+          "sim_host_wall_s": 33.0527,
+          "stall_time_s": 0.0664,
+          "max_target_disp_m": 0.252
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -1958,11 +2083,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": true,
-          "steps": 117,
-          "wall_time_s": 10.3828,
-          "stall_time_s": 0.0632,
-          "max_target_disp_m": 0.1803
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.0891,
+          "sim_host_wall_s": 32.4569,
+          "stall_time_s": 0.0665,
+          "max_target_disp_m": 0.1772
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -1970,11 +2096,12 @@
           "task_id": 1,
           "level": "l1",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 25.167,
-          "stall_time_s": 0.0639,
-          "max_target_disp_m": 0.4257
+          "success": true,
+          "steps": 133,
+          "wall_time_s": 6.7292,
+          "sim_host_wall_s": 17.4095,
+          "stall_time_s": 0.0661,
+          "max_target_disp_m": 0.3677
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -1983,10 +2110,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 245,
-          "wall_time_s": 22.5923,
-          "stall_time_s": 0.064,
-          "max_target_disp_m": 0.2168
+          "steps": 124,
+          "wall_time_s": 6.2767,
+          "sim_host_wall_s": 16.2988,
+          "stall_time_s": 0.0651,
+          "max_target_disp_m": 0.2153
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -1995,10 +2123,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 134,
-          "wall_time_s": 6.8174,
-          "stall_time_s": 0.0601,
-          "max_target_disp_m": 0.1064
+          "steps": 125,
+          "wall_time_s": 6.3219,
+          "sim_host_wall_s": 9.2329,
+          "stall_time_s": 0.0608,
+          "max_target_disp_m": 0.0967
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -2007,10 +2136,11 @@
           "level": "l2",
           "init_idx": 1,
           "success": true,
-          "steps": 107,
-          "wall_time_s": 5.4741,
-          "stall_time_s": 0.0626,
-          "max_target_disp_m": 0.0951
+          "steps": 105,
+          "wall_time_s": 5.3229,
+          "sim_host_wall_s": 8.0396,
+          "stall_time_s": 0.0615,
+          "max_target_disp_m": 0.1066
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -2018,11 +2148,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 94.5722,
-          "stall_time_s": 0.089,
-          "max_target_disp_m": 0.1386
+          "success": true,
+          "steps": 119,
+          "wall_time_s": 6.0441,
+          "sim_host_wall_s": 38.6447,
+          "stall_time_s": 0.0825,
+          "max_target_disp_m": 0.3194
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -2032,8 +2163,9 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 94.2891,
-          "stall_time_s": 0.0751,
+          "wall_time_s": 13.1123,
+          "sim_host_wall_s": 87.0576,
+          "stall_time_s": 0.0874,
           "max_target_disp_m": 0.1216
         },
         {
@@ -2044,9 +2176,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 94.0346,
-          "stall_time_s": 0.0808,
-          "max_target_disp_m": 0.2716
+          "wall_time_s": 13.1073,
+          "sim_host_wall_s": 87.4589,
+          "stall_time_s": 0.0825,
+          "max_target_disp_m": 0.2989
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -2056,9 +2189,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 118.062,
-          "stall_time_s": 0.0797,
-          "max_target_disp_m": 0.1193
+          "wall_time_s": 13.1023,
+          "sim_host_wall_s": 104.4917,
+          "stall_time_s": 0.0764,
+          "max_target_disp_m": 0.1858
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -2066,11 +2200,12 @@
           "task_id": 1,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 95.4756,
-          "stall_time_s": 0.0745,
-          "max_target_disp_m": 0.2312
+          "success": true,
+          "steps": 133,
+          "wall_time_s": 6.7403,
+          "sim_host_wall_s": 45.1305,
+          "stall_time_s": 0.0777,
+          "max_target_disp_m": 0.2715
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -2080,9 +2215,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 96.6273,
-          "stall_time_s": 0.0827,
-          "max_target_disp_m": 0.1616
+          "wall_time_s": 13.1106,
+          "sim_host_wall_s": 87.6752,
+          "stall_time_s": 0.085,
+          "max_target_disp_m": 0.1644
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -2091,10 +2227,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 124,
-          "wall_time_s": 6.3159,
-          "stall_time_s": 0.0639,
-          "max_target_disp_m": 0.1109
+          "steps": 119,
+          "wall_time_s": 6.0217,
+          "sim_host_wall_s": 8.6934,
+          "stall_time_s": 0.06,
+          "max_target_disp_m": 0.0681
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -2104,9 +2241,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 13.1223,
-          "stall_time_s": 0.0636,
-          "max_target_disp_m": 0.1612
+          "wall_time_s": 13.0844,
+          "sim_host_wall_s": 20.0884,
+          "stall_time_s": 0.0598,
+          "max_target_disp_m": 0.0309
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -2116,9 +2254,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 23.4681,
-          "stall_time_s": 0.0645,
-          "max_target_disp_m": 0.1419
+          "wall_time_s": 13.0862,
+          "sim_host_wall_s": 28.9459,
+          "stall_time_s": 0.0637,
+          "max_target_disp_m": 0.1996
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -2127,10 +2266,11 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 254,
-          "wall_time_s": 23.0957,
-          "stall_time_s": 0.0638,
-          "max_target_disp_m": 0.4583
+          "steps": 230,
+          "wall_time_s": 11.5894,
+          "sim_host_wall_s": 28.9063,
+          "stall_time_s": 0.0665,
+          "max_target_disp_m": 0.4603
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -2138,11 +2278,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 0,
-          "success": true,
-          "steps": 113,
-          "wall_time_s": 11.1364,
-          "stall_time_s": 0.0644,
-          "max_target_disp_m": 0.1842
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.09,
+          "sim_host_wall_s": 34.7854,
+          "stall_time_s": 0.0649,
+          "max_target_disp_m": 0.1486
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -2151,10 +2292,11 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 80,
-          "wall_time_s": 7.5268,
-          "stall_time_s": 0.0641,
-          "max_target_disp_m": 0.2756
+          "steps": 90,
+          "wall_time_s": 4.5762,
+          "sim_host_wall_s": 12.5088,
+          "stall_time_s": 0.0681,
+          "max_target_disp_m": 0.2689
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -2164,9 +2306,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 23.7859,
-          "stall_time_s": 0.0637,
-          "max_target_disp_m": 0.3728
+          "wall_time_s": 13.0905,
+          "sim_host_wall_s": 34.2559,
+          "stall_time_s": 0.067,
+          "max_target_disp_m": 0.1718
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -2175,16 +2318,17 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 246,
-          "wall_time_s": 23.6073,
-          "stall_time_s": 0.0634,
-          "max_target_disp_m": 0.3734
+          "steps": 113,
+          "wall_time_s": 5.7271,
+          "sim_host_wall_s": 15.1969,
+          "stall_time_s": 0.0673,
+          "max_target_disp_m": 0.3807
         }
       ],
-      "fast_ttac_p50_ms": 24.24,
-      "fast_ttac_p99_ms": 24.41,
-      "act_p50_us": 2861.73,
-      "underruns": 1
+      "fast_ttac_p50_ms": 23.99,
+      "fast_ttac_p99_ms": 24.72,
+      "act_p50_us": 2493.37,
+      "underruns": 0
     },
     {
       "suite": "LIBERO-Static",
@@ -2192,28 +2336,28 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 2,
       "episodes": 12,
-      "successes": 11,
-      "success_rate_pct": 91.7,
-      "mean_time_to_success_s": 9.1,
-      "mean_steps_to_success": 104.8,
-      "mean_episode_wall_s": 10.2,
-      "total_wall_s": 122.41,
-      "total_stall_s": 51.66,
-      "robot_stall_pct": 42.2,
-      "fleet_goodput_tasks_per_min": 10.78,
+      "successes": 12,
+      "success_rate_pct": 100.0,
+      "mean_time_to_success_s": 9.02,
+      "mean_steps_to_success": 106.7,
+      "mean_episode_wall_s": 9.02,
+      "total_wall_s": 108.27,
+      "total_stall_s": 44.15,
+      "robot_stall_pct": 40.8,
+      "fleet_goodput_tasks_per_min": 13.3,
       "max_target_disp_m": 0.0,
       "per_group": {
         "static": {
           "episodes": 12,
-          "successes": 11,
-          "success_rate_pct": 91.7,
-          "mean_time_to_success_s": 9.1,
-          "mean_steps_to_success": 104.8,
-          "mean_episode_wall_s": 10.2,
-          "total_wall_s": 122.41,
-          "total_stall_s": 51.66,
-          "robot_stall_pct": 42.2,
-          "fleet_goodput_tasks_per_min": 10.78,
+          "successes": 12,
+          "success_rate_pct": 100.0,
+          "mean_time_to_success_s": 9.02,
+          "mean_steps_to_success": 106.7,
+          "mean_episode_wall_s": 9.02,
+          "total_wall_s": 108.27,
+          "total_stall_s": 44.15,
+          "robot_stall_pct": 40.8,
+          "fleet_goodput_tasks_per_min": 13.3,
           "max_target_disp_m": 0.0,
           "speed_mps": 0.0
         }
@@ -2226,9 +2370,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 75,
-          "wall_time_s": 6.5453,
-          "stall_time_s": 2.7901,
+          "steps": 76,
+          "wall_time_s": 6.4132,
+          "sim_host_wall_s": 8.1078,
+          "stall_time_s": 2.606,
           "max_target_disp_m": 0.0
         },
         {
@@ -2238,9 +2383,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 72,
-          "wall_time_s": 6.3962,
-          "stall_time_s": 2.7914,
+          "steps": 71,
+          "wall_time_s": 6.2636,
+          "sim_host_wall_s": 7.8103,
+          "stall_time_s": 2.7065,
           "max_target_disp_m": 0.0
         },
         {
@@ -2250,9 +2396,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 87,
-          "wall_time_s": 7.4965,
-          "stall_time_s": 3.1407,
+          "steps": 85,
+          "wall_time_s": 7.2083,
+          "sim_host_wall_s": 9.0733,
+          "stall_time_s": 2.9505,
           "max_target_disp_m": 0.0
         },
         {
@@ -2262,9 +2409,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 106,
-          "wall_time_s": 9.3351,
-          "stall_time_s": 4.0275,
+          "steps": 107,
+          "wall_time_s": 9.0688,
+          "sim_host_wall_s": 11.4294,
+          "stall_time_s": 3.7091,
           "max_target_disp_m": 0.0
         },
         {
@@ -2274,9 +2422,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 107,
-          "wall_time_s": 9.1729,
-          "stall_time_s": 3.8154,
+          "steps": 108,
+          "wall_time_s": 9.1083,
+          "sim_host_wall_s": 11.5458,
+          "stall_time_s": 3.6977,
           "max_target_disp_m": 0.0
         },
         {
@@ -2287,8 +2436,9 @@
           "init_idx": 2,
           "success": true,
           "steps": 104,
-          "wall_time_s": 9.0474,
-          "stall_time_s": 3.8403,
+          "wall_time_s": 8.8011,
+          "sim_host_wall_s": 11.1229,
+          "stall_time_s": 3.5881,
           "max_target_disp_m": 0.0
         },
         {
@@ -2299,8 +2449,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 128,
-          "wall_time_s": 11.0521,
-          "stall_time_s": 4.6431,
+          "wall_time_s": 10.6244,
+          "sim_host_wall_s": 12.9043,
+          "stall_time_s": 4.2132,
           "max_target_disp_m": 0.0
         },
         {
@@ -2309,10 +2460,11 @@
           "task_id": 0,
           "level": "static",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 22.2773,
-          "stall_time_s": 9.2591,
+          "success": true,
+          "steps": 130,
+          "wall_time_s": 10.7814,
+          "sim_host_wall_s": 13.1473,
+          "stall_time_s": 4.2701,
           "max_target_disp_m": 0.0
         },
         {
@@ -2322,9 +2474,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 142,
-          "wall_time_s": 12.3516,
-          "stall_time_s": 5.2418,
+          "steps": 141,
+          "wall_time_s": 11.9717,
+          "sim_host_wall_s": 14.4862,
+          "stall_time_s": 4.908,
           "max_target_disp_m": 0.0
         },
         {
@@ -2334,9 +2487,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 110,
-          "wall_time_s": 9.3815,
-          "stall_time_s": 3.874,
+          "steps": 114,
+          "wall_time_s": 9.5845,
+          "sim_host_wall_s": 11.6578,
+          "stall_time_s": 3.8742,
           "max_target_disp_m": 0.0
         },
         {
@@ -2346,9 +2500,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 114,
-          "wall_time_s": 10.0066,
-          "stall_time_s": 4.2988,
+          "steps": 112,
+          "wall_time_s": 9.52,
+          "sim_host_wall_s": 11.5451,
+          "stall_time_s": 3.9098,
           "max_target_disp_m": 0.0
         },
         {
@@ -2358,19 +2513,20 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 108,
-          "wall_time_s": 9.3468,
-          "stall_time_s": 3.9388,
+          "steps": 104,
+          "wall_time_s": 8.9283,
+          "sim_host_wall_s": 10.8275,
+          "stall_time_s": 3.7185,
           "max_target_disp_m": 0.0
         }
       ],
-      "chunk_infer_p50_ms": 349.65,
-      "chunk_infer_p99_ms": 388.15,
-      "paired_common_successes": 11,
+      "chunk_infer_p50_ms": 326.34,
+      "chunk_infer_p99_ms": 360.28,
+      "paired_common_successes": 12,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 9.1,
-        "tempo_s": 5.72,
-        "tempo_speedup_x": 1.59
+        "baseline_s": 9.02,
+        "tempo_s": 5.74,
+        "tempo_speedup_x": 1.57
       }
     },
     {
@@ -2381,26 +2537,26 @@
       "episodes": 12,
       "successes": 12,
       "success_rate_pct": 100.0,
-      "mean_time_to_success_s": 8.47,
-      "mean_steps_to_success": 108.4,
-      "mean_episode_wall_s": 8.47,
-      "total_wall_s": 101.66,
-      "total_stall_s": 36.52,
-      "robot_stall_pct": 35.9,
-      "fleet_goodput_tasks_per_min": 14.16,
+      "mean_time_to_success_s": 8.71,
+      "mean_steps_to_success": 112.2,
+      "mean_episode_wall_s": 8.71,
+      "total_wall_s": 104.49,
+      "total_stall_s": 37.02,
+      "robot_stall_pct": 35.4,
+      "fleet_goodput_tasks_per_min": 13.78,
       "max_target_disp_m": 0.0,
       "per_group": {
         "static": {
           "episodes": 12,
           "successes": 12,
           "success_rate_pct": 100.0,
-          "mean_time_to_success_s": 8.47,
-          "mean_steps_to_success": 108.4,
-          "mean_episode_wall_s": 8.47,
-          "total_wall_s": 101.66,
-          "total_stall_s": 36.52,
-          "robot_stall_pct": 35.9,
-          "fleet_goodput_tasks_per_min": 14.16,
+          "mean_time_to_success_s": 8.71,
+          "mean_steps_to_success": 112.2,
+          "mean_episode_wall_s": 8.71,
+          "total_wall_s": 104.49,
+          "total_stall_s": 37.02,
+          "robot_stall_pct": 35.4,
+          "fleet_goodput_tasks_per_min": 13.78,
           "max_target_disp_m": 0.0,
           "speed_mps": 0.0
         }
@@ -2414,8 +2570,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 78,
-          "wall_time_s": 6.1241,
-          "stall_time_s": 2.219,
+          "wall_time_s": 6.0092,
+          "sim_host_wall_s": 7.6676,
+          "stall_time_s": 2.1023,
           "max_target_disp_m": 0.0
         },
         {
@@ -2425,9 +2582,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 72,
-          "wall_time_s": 5.6544,
-          "stall_time_s": 2.0491,
+          "steps": 73,
+          "wall_time_s": 5.7104,
+          "sim_host_wall_s": 7.2256,
+          "stall_time_s": 2.0538,
           "max_target_disp_m": 0.0
         },
         {
@@ -2437,9 +2595,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 84,
-          "wall_time_s": 6.5424,
-          "stall_time_s": 2.3366,
+          "steps": 91,
+          "wall_time_s": 7.1262,
+          "sim_host_wall_s": 9.156,
+          "stall_time_s": 2.568,
           "max_target_disp_m": 0.0
         },
         {
@@ -2450,8 +2609,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 110,
-          "wall_time_s": 8.6728,
-          "stall_time_s": 3.1648,
+          "wall_time_s": 8.6356,
+          "sim_host_wall_s": 11.1584,
+          "stall_time_s": 3.1257,
           "max_target_disp_m": 0.0
         },
         {
@@ -2461,9 +2621,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 104,
-          "wall_time_s": 8.1364,
-          "stall_time_s": 2.9294,
+          "steps": 105,
+          "wall_time_s": 8.3341,
+          "sim_host_wall_s": 10.8395,
+          "stall_time_s": 3.0735,
           "max_target_disp_m": 0.0
         },
         {
@@ -2473,9 +2634,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 106,
-          "wall_time_s": 8.3048,
-          "stall_time_s": 2.9975,
+          "steps": 104,
+          "wall_time_s": 8.0116,
+          "sim_host_wall_s": 10.3538,
+          "stall_time_s": 2.8024,
           "max_target_disp_m": 0.0
         },
         {
@@ -2486,8 +2648,9 @@
           "init_idx": 0,
           "success": true,
           "steps": 128,
-          "wall_time_s": 9.983,
-          "stall_time_s": 3.5737,
+          "wall_time_s": 9.8296,
+          "sim_host_wall_s": 11.9964,
+          "stall_time_s": 3.4183,
           "max_target_disp_m": 0.0
         },
         {
@@ -2497,9 +2660,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 128,
-          "wall_time_s": 9.988,
-          "stall_time_s": 3.5793,
+          "steps": 167,
+          "wall_time_s": 12.9803,
+          "sim_host_wall_s": 16.0004,
+          "stall_time_s": 4.6155,
           "max_target_disp_m": 0.0
         },
         {
@@ -2509,9 +2673,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 135,
-          "wall_time_s": 10.5403,
-          "stall_time_s": 3.7814,
+          "steps": 137,
+          "wall_time_s": 10.5767,
+          "sim_host_wall_s": 12.7295,
+          "stall_time_s": 3.7145,
           "max_target_disp_m": 0.0
         },
         {
@@ -2521,9 +2686,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 132,
-          "wall_time_s": 10.2889,
-          "stall_time_s": 3.6798,
+          "steps": 135,
+          "wall_time_s": 10.4302,
+          "sim_host_wall_s": 12.6406,
+          "stall_time_s": 3.6683,
           "max_target_disp_m": 0.0
         },
         {
@@ -2533,9 +2699,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 116,
-          "wall_time_s": 9.0626,
-          "stall_time_s": 3.2546,
+          "steps": 115,
+          "wall_time_s": 8.8133,
+          "sim_host_wall_s": 10.6413,
+          "stall_time_s": 3.0531,
           "max_target_disp_m": 0.0
         },
         {
@@ -2545,19 +2712,20 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 108,
-          "wall_time_s": 8.3656,
-          "stall_time_s": 2.9586,
+          "steps": 104,
+          "wall_time_s": 8.0323,
+          "sim_host_wall_s": 9.7727,
+          "stall_time_s": 2.8226,
           "max_target_disp_m": 0.0
         }
       ],
-      "chunk_infer_p50_ms": 109.8,
-      "chunk_infer_p99_ms": 122.96,
+      "chunk_infer_p50_ms": 107.64,
+      "chunk_infer_p99_ms": 117.41,
       "paired_common_successes": 12,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 8.47,
-        "tempo_s": 5.84,
-        "tempo_speedup_x": 1.45
+        "baseline_s": 8.71,
+        "tempo_s": 5.74,
+        "tempo_speedup_x": 1.52
       }
     },
     {
@@ -2566,217 +2734,28 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 2,
       "episodes": 12,
-      "successes": 2,
-      "success_rate_pct": 16.7,
-      "mean_time_to_success_s": 8.74,
-      "mean_steps_to_success": 165.0,
-      "mean_episode_wall_s": 12.72,
-      "total_wall_s": 152.6,
-      "total_stall_s": 5.31,
-      "robot_stall_pct": 3.5,
-      "fleet_goodput_tasks_per_min": 1.57,
+      "successes": 6,
+      "success_rate_pct": 50.0,
+      "mean_time_to_success_s": 5.43,
+      "mean_steps_to_success": 100.3,
+      "mean_episode_wall_s": 9.44,
+      "total_wall_s": 113.26,
+      "total_stall_s": 4.93,
+      "robot_stall_pct": 4.4,
+      "fleet_goodput_tasks_per_min": 6.36,
       "max_target_disp_m": 0.0,
       "per_group": {
         "static": {
           "episodes": 12,
-          "successes": 2,
-          "success_rate_pct": 16.7,
-          "mean_time_to_success_s": 8.74,
-          "mean_steps_to_success": 165.0,
-          "mean_episode_wall_s": 12.72,
-          "total_wall_s": 152.6,
-          "total_stall_s": 5.31,
-          "robot_stall_pct": 3.5,
-          "fleet_goodput_tasks_per_min": 1.57,
-          "max_target_disp_m": 0.0,
-          "speed_mps": 0.0
-        }
-      },
-      "episodes_detail": [
-        {
-          "scene_id": "static__libero_spatial__t0__i0",
-          "suite": "libero_spatial",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5231,
-          "stall_time_s": 0.4286,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t0__i1",
-          "suite": "libero_spatial",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4846,
-          "stall_time_s": 0.4017,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t0__i2",
-          "suite": "libero_spatial",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 2,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.482,
-          "stall_time_s": 0.4329,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t1__i0",
-          "suite": "libero_spatial",
-          "task_id": 1,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5781,
-          "stall_time_s": 0.4594,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t1__i1",
-          "suite": "libero_spatial",
-          "task_id": 1,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5004,
-          "stall_time_s": 0.4412,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_spatial__t1__i2",
-          "suite": "libero_spatial",
-          "task_id": 1,
-          "level": "static",
-          "init_idx": 2,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5589,
-          "stall_time_s": 0.4465,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_object__t0__i0",
-          "suite": "libero_object",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4843,
-          "stall_time_s": 0.4419,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_object__t0__i1",
-          "suite": "libero_object",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5208,
-          "stall_time_s": 0.4647,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_object__t0__i2",
-          "suite": "libero_object",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 2,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.4623,
-          "stall_time_s": 0.4185,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_goal__t0__i0",
-          "suite": "libero_goal",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.5398,
-          "stall_time_s": 0.4701,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_goal__t0__i1",
-          "suite": "libero_goal",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 1,
-          "success": true,
-          "steps": 183,
-          "wall_time_s": 9.6249,
-          "stall_time_s": 0.4506,
-          "max_target_disp_m": 0.0
-        },
-        {
-          "scene_id": "static__libero_goal__t0__i2",
-          "suite": "libero_goal",
-          "task_id": 0,
-          "level": "static",
-          "init_idx": 2,
-          "success": true,
-          "steps": 147,
-          "wall_time_s": 7.8454,
-          "stall_time_s": 0.4528,
-          "max_target_disp_m": 0.0
-        }
-      ],
-      "fast_ttac_p50_ms": 586.82,
-      "fast_ttac_p99_ms": 841.84,
-      "act_p50_us": 4766.48,
-      "underruns": 0,
-      "paired_common_successes": 2,
-      "paired_wall_s_vs_tempo": {
-        "baseline_s": 8.74,
-        "tempo_s": 5.63,
-        "tempo_speedup_x": 1.55
-      }
-    },
-    {
-      "suite": "LIBERO-Static",
-      "policy": "Tempo (Engine, N=2)",
-      "model": "lerobot/pi05_libero_finetuned_v044",
-      "num_streams": 2,
-      "episodes": 12,
-      "successes": 12,
-      "success_rate_pct": 100.0,
-      "mean_time_to_success_s": 5.84,
-      "mean_steps_to_success": 114.6,
-      "mean_episode_wall_s": 5.84,
-      "total_wall_s": 70.06,
-      "total_stall_s": 1.21,
-      "robot_stall_pct": 1.7,
-      "fleet_goodput_tasks_per_min": 20.55,
-      "max_target_disp_m": 0.0,
-      "per_group": {
-        "static": {
-          "episodes": 12,
-          "successes": 12,
-          "success_rate_pct": 100.0,
-          "mean_time_to_success_s": 5.84,
-          "mean_steps_to_success": 114.6,
-          "mean_episode_wall_s": 5.84,
-          "total_wall_s": 70.06,
-          "total_stall_s": 1.21,
-          "robot_stall_pct": 1.7,
-          "fleet_goodput_tasks_per_min": 20.55,
+          "successes": 6,
+          "success_rate_pct": 50.0,
+          "mean_time_to_success_s": 5.43,
+          "mean_steps_to_success": 100.3,
+          "mean_episode_wall_s": 9.44,
+          "total_wall_s": 113.26,
+          "total_stall_s": 4.93,
+          "robot_stall_pct": 4.4,
+          "fleet_goodput_tasks_per_min": 6.36,
           "max_target_disp_m": 0.0,
           "speed_mps": 0.0
         }
@@ -2789,9 +2768,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 80,
-          "wall_time_s": 4.1091,
-          "stall_time_s": 0.1005,
+          "steps": 72,
+          "wall_time_s": 4.0324,
+          "sim_host_wall_s": 6.408,
+          "stall_time_s": 0.4234,
           "max_target_disp_m": 0.0
         },
         {
@@ -2800,10 +2780,11 @@
           "task_id": 0,
           "level": "static",
           "init_idx": 1,
-          "success": true,
-          "steps": 80,
-          "wall_time_s": 4.1084,
-          "stall_time_s": 0.1032,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4298,
+          "sim_host_wall_s": 21.2715,
+          "stall_time_s": 0.4053,
           "max_target_disp_m": 0.0
         },
         {
@@ -2813,9 +2794,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 100,
-          "wall_time_s": 5.1087,
-          "stall_time_s": 0.102,
+          "steps": 75,
+          "wall_time_s": 4.1508,
+          "sim_host_wall_s": 6.7822,
+          "stall_time_s": 0.3927,
           "max_target_disp_m": 0.0
         },
         {
@@ -2824,10 +2806,11 @@
           "task_id": 1,
           "level": "static",
           "init_idx": 0,
-          "success": true,
-          "steps": 128,
-          "wall_time_s": 6.5107,
-          "stall_time_s": 0.102,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4483,
+          "sim_host_wall_s": 21.6329,
+          "stall_time_s": 0.4209,
           "max_target_disp_m": 0.0
         },
         {
@@ -2837,9 +2820,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 113,
-          "wall_time_s": 5.7549,
-          "stall_time_s": 0.0974,
+          "steps": 98,
+          "wall_time_s": 5.3272,
+          "sim_host_wall_s": 8.4723,
+          "stall_time_s": 0.4171,
           "max_target_disp_m": 0.0
         },
         {
@@ -2848,10 +2832,11 @@
           "task_id": 1,
           "level": "static",
           "init_idx": 2,
-          "success": true,
-          "steps": 120,
-          "wall_time_s": 6.1108,
-          "stall_time_s": 0.1027,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4702,
+          "sim_host_wall_s": 21.547,
+          "stall_time_s": 0.4448,
           "max_target_disp_m": 0.0
         },
         {
@@ -2862,8 +2847,210 @@
           "init_idx": 0,
           "success": true,
           "steps": 129,
-          "wall_time_s": 6.562,
-          "stall_time_s": 0.103,
+          "wall_time_s": 6.8215,
+          "sim_host_wall_s": 10.8721,
+          "stall_time_s": 0.3588,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_object__t0__i1",
+          "suite": "libero_object",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 1,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4242,
+          "sim_host_wall_s": 20.6075,
+          "stall_time_s": 0.3979,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_object__t0__i2",
+          "suite": "libero_object",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 2,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4571,
+          "sim_host_wall_s": 21.0875,
+          "stall_time_s": 0.4296,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_goal__t0__i0",
+          "suite": "libero_goal",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 124,
+          "wall_time_s": 6.6118,
+          "sim_host_wall_s": 10.7771,
+          "stall_time_s": 0.398,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_goal__t0__i1",
+          "suite": "libero_goal",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 1,
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4416,
+          "sim_host_wall_s": 20.9346,
+          "stall_time_s": 0.4133,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_goal__t0__i2",
+          "suite": "libero_goal",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 2,
+          "success": true,
+          "steps": 104,
+          "wall_time_s": 5.6434,
+          "sim_host_wall_s": 9.3083,
+          "stall_time_s": 0.4322,
+          "max_target_disp_m": 0.0
+        }
+      ],
+      "fast_ttac_p50_ms": 489.62,
+      "fast_ttac_p99_ms": 627.02,
+      "act_p50_us": 3988.86,
+      "underruns": 0,
+      "paired_common_successes": 6,
+      "paired_wall_s_vs_tempo": {
+        "baseline_s": 5.43,
+        "tempo_s": 5.44,
+        "tempo_speedup_x": 1.0
+      }
+    },
+    {
+      "suite": "LIBERO-Static",
+      "policy": "Tempo (Engine, N=2)",
+      "model": "lerobot/pi05_libero_finetuned_v044",
+      "num_streams": 2,
+      "episodes": 12,
+      "successes": 12,
+      "success_rate_pct": 100.0,
+      "mean_time_to_success_s": 5.74,
+      "mean_steps_to_success": 112.7,
+      "mean_episode_wall_s": 5.74,
+      "total_wall_s": 68.89,
+      "total_stall_s": 1.15,
+      "robot_stall_pct": 1.7,
+      "fleet_goodput_tasks_per_min": 20.9,
+      "max_target_disp_m": 0.0,
+      "per_group": {
+        "static": {
+          "episodes": 12,
+          "successes": 12,
+          "success_rate_pct": 100.0,
+          "mean_time_to_success_s": 5.74,
+          "mean_steps_to_success": 112.7,
+          "mean_episode_wall_s": 5.74,
+          "total_wall_s": 68.89,
+          "total_stall_s": 1.15,
+          "robot_stall_pct": 1.7,
+          "fleet_goodput_tasks_per_min": 20.9,
+          "max_target_disp_m": 0.0,
+          "speed_mps": 0.0
+        }
+      },
+      "episodes_detail": [
+        {
+          "scene_id": "static__libero_spatial__t0__i0",
+          "suite": "libero_spatial",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 82,
+          "wall_time_s": 4.2051,
+          "sim_host_wall_s": 6.1241,
+          "stall_time_s": 0.098,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t0__i1",
+          "suite": "libero_spatial",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 1,
+          "success": true,
+          "steps": 79,
+          "wall_time_s": 4.0545,
+          "sim_host_wall_s": 5.9767,
+          "stall_time_s": 0.0956,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t0__i2",
+          "suite": "libero_spatial",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 2,
+          "success": true,
+          "steps": 91,
+          "wall_time_s": 4.6543,
+          "sim_host_wall_s": 6.8473,
+          "stall_time_s": 0.0954,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t1__i0",
+          "suite": "libero_spatial",
+          "task_id": 1,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 143,
+          "wall_time_s": 7.2607,
+          "sim_host_wall_s": 10.6348,
+          "stall_time_s": 0.0963,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t1__i1",
+          "suite": "libero_spatial",
+          "task_id": 1,
+          "level": "static",
+          "init_idx": 1,
+          "success": true,
+          "steps": 109,
+          "wall_time_s": 5.5553,
+          "sim_host_wall_s": 8.353,
+          "stall_time_s": 0.0941,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_spatial__t1__i2",
+          "suite": "libero_spatial",
+          "task_id": 1,
+          "level": "static",
+          "init_idx": 2,
+          "success": true,
+          "steps": 108,
+          "wall_time_s": 5.5057,
+          "sim_host_wall_s": 8.1383,
+          "stall_time_s": 0.095,
+          "max_target_disp_m": 0.0
+        },
+        {
+          "scene_id": "static__libero_object__t0__i0",
+          "suite": "libero_object",
+          "task_id": 0,
+          "level": "static",
+          "init_idx": 0,
+          "success": true,
+          "steps": 133,
+          "wall_time_s": 6.7633,
+          "sim_host_wall_s": 9.9515,
+          "stall_time_s": 0.0947,
           "max_target_disp_m": 0.0
         },
         {
@@ -2874,8 +3061,9 @@
           "init_idx": 1,
           "success": true,
           "steps": 140,
-          "wall_time_s": 7.109,
-          "stall_time_s": 0.0992,
+          "wall_time_s": 7.1076,
+          "sim_host_wall_s": 10.2272,
+          "stall_time_s": 0.095,
           "max_target_disp_m": 0.0
         },
         {
@@ -2885,9 +3073,10 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 148,
-          "wall_time_s": 7.5139,
-          "stall_time_s": 0.1032,
+          "steps": 133,
+          "wall_time_s": 6.7589,
+          "sim_host_wall_s": 9.9126,
+          "stall_time_s": 0.0965,
           "max_target_disp_m": 0.0
         },
         {
@@ -2897,9 +3086,10 @@
           "level": "static",
           "init_idx": 0,
           "success": true,
-          "steps": 116,
-          "wall_time_s": 5.905,
-          "stall_time_s": 0.0966,
+          "steps": 120,
+          "wall_time_s": 6.1093,
+          "sim_host_wall_s": 9.1932,
+          "stall_time_s": 0.098,
           "max_target_disp_m": 0.0
         },
         {
@@ -2909,9 +3099,10 @@
           "level": "static",
           "init_idx": 1,
           "success": true,
-          "steps": 111,
-          "wall_time_s": 5.6561,
-          "stall_time_s": 0.0981,
+          "steps": 109,
+          "wall_time_s": 5.5551,
+          "sim_host_wall_s": 8.2415,
+          "stall_time_s": 0.0947,
           "max_target_disp_m": 0.0
         },
         {
@@ -2921,15 +3112,16 @@
           "level": "static",
           "init_idx": 2,
           "success": true,
-          "steps": 110,
-          "wall_time_s": 5.6116,
-          "stall_time_s": 0.1039,
+          "steps": 105,
+          "wall_time_s": 5.3583,
+          "sim_host_wall_s": 8.0933,
+          "stall_time_s": 0.0974,
           "max_target_disp_m": 0.0
         }
       ],
-      "fast_ttac_p50_ms": 39.25,
-      "fast_ttac_p99_ms": 45.98,
-      "act_p50_us": 2948.96,
+      "fast_ttac_p50_ms": 41.27,
+      "fast_ttac_p99_ms": 43.24,
+      "act_p50_us": 2469.34,
       "underruns": 0
     },
     {
@@ -2938,57 +3130,57 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 2,
       "episodes": 24,
-      "successes": 8,
-      "success_rate_pct": 33.3,
-      "mean_time_to_success_s": 39.4,
-      "mean_steps_to_success": 138.5,
-      "mean_episode_wall_s": 61.13,
-      "total_wall_s": 1467.18,
-      "total_stall_s": 189.38,
-      "robot_stall_pct": 12.9,
-      "fleet_goodput_tasks_per_min": 0.65,
-      "max_target_disp_m": 0.3428,
+      "successes": 12,
+      "success_rate_pct": 50.0,
+      "mean_time_to_success_s": 11.41,
+      "mean_steps_to_success": 133.1,
+      "mean_episode_wall_s": 16.7,
+      "total_wall_s": 400.76,
+      "total_stall_s": 164.42,
+      "robot_stall_pct": 41.0,
+      "fleet_goodput_tasks_per_min": 3.59,
+      "max_target_disp_m": 0.3677,
       "per_group": {
         "l1": {
           "episodes": 8,
-          "successes": 3,
-          "success_rate_pct": 37.5,
-          "mean_time_to_success_s": 16.96,
-          "mean_steps_to_success": 120.3,
-          "mean_episode_wall_s": 32.85,
-          "total_wall_s": 262.82,
-          "total_stall_s": 60.33,
-          "robot_stall_pct": 23.0,
-          "fleet_goodput_tasks_per_min": 1.37,
-          "max_target_disp_m": 0.2888,
+          "successes": 4,
+          "success_rate_pct": 50.0,
+          "mean_time_to_success_s": 11.54,
+          "mean_steps_to_success": 134.8,
+          "mean_episode_wall_s": 16.72,
+          "total_wall_s": 133.72,
+          "total_stall_s": 54.62,
+          "robot_stall_pct": 40.8,
+          "fleet_goodput_tasks_per_min": 3.59,
+          "max_target_disp_m": 0.3677,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
-          "successes": 3,
-          "success_rate_pct": 37.5,
-          "mean_time_to_success_s": 63.42,
-          "mean_steps_to_success": 121.3,
-          "mean_episode_wall_s": 110.46,
-          "total_wall_s": 883.71,
-          "total_stall_s": 59.06,
-          "robot_stall_pct": 6.7,
-          "fleet_goodput_tasks_per_min": 0.41,
-          "max_target_disp_m": 0.2614,
+          "successes": 5,
+          "success_rate_pct": 62.5,
+          "mean_time_to_success_s": 12.0,
+          "mean_steps_to_success": 138.4,
+          "mean_episode_wall_s": 15.82,
+          "total_wall_s": 126.55,
+          "total_stall_s": 52.78,
+          "robot_stall_pct": 41.7,
+          "fleet_goodput_tasks_per_min": 4.74,
+          "max_target_disp_m": 0.2911,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 2,
-          "success_rate_pct": 25.0,
-          "mean_time_to_success_s": 37.05,
-          "mean_steps_to_success": 191.5,
-          "mean_episode_wall_s": 40.08,
-          "total_wall_s": 320.66,
-          "total_stall_s": 69.99,
-          "robot_stall_pct": 21.8,
-          "fleet_goodput_tasks_per_min": 0.75,
-          "max_target_disp_m": 0.3428,
+          "successes": 3,
+          "success_rate_pct": 37.5,
+          "mean_time_to_success_s": 10.26,
+          "mean_steps_to_success": 122.0,
+          "mean_episode_wall_s": 17.56,
+          "total_wall_s": 140.49,
+          "total_stall_s": 57.03,
+          "robot_stall_pct": 40.6,
+          "fleet_goodput_tasks_per_min": 2.56,
+          "max_target_disp_m": 0.3351,
           "speed_mps": 0.09
         }
       },
@@ -2999,11 +3191,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": true,
-          "steps": 192,
-          "wall_time_s": 21.1372,
-          "stall_time_s": 7.1235,
-          "max_target_disp_m": 0.137
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 21.8708,
+          "sim_host_wall_s": 34.7117,
+          "stall_time_s": 8.8477,
+          "max_target_disp_m": 0.1241
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -3011,11 +3204,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 28.219,
-          "stall_time_s": 9.2635,
-          "max_target_disp_m": 0.1246
+          "success": true,
+          "steps": 197,
+          "wall_time_s": 16.7734,
+          "sim_host_wall_s": 26.2769,
+          "stall_time_s": 6.9037,
+          "max_target_disp_m": 0.1229
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -3025,9 +3219,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 44.2249,
-          "stall_time_s": 9.401,
-          "max_target_disp_m": 0.1668
+          "wall_time_s": 21.8668,
+          "sim_host_wall_s": 55.6834,
+          "stall_time_s": 8.841,
+          "max_target_disp_m": 0.155
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -3035,11 +3230,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 50.1826,
-          "stall_time_s": 10.011,
-          "max_target_disp_m": 0.1229
+          "success": true,
+          "steps": 168,
+          "wall_time_s": 14.2034,
+          "sim_host_wall_s": 33.8218,
+          "stall_time_s": 5.7868,
+          "max_target_disp_m": 0.3677
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -3049,9 +3245,10 @@
           "init_idx": 0,
           "success": true,
           "steps": 83,
-          "wall_time_s": 14.6117,
-          "stall_time_s": 3.1663,
-          "max_target_disp_m": 0.1596
+          "wall_time_s": 7.2253,
+          "sim_host_wall_s": 17.6636,
+          "stall_time_s": 3.0677,
+          "max_target_disp_m": 0.1472
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -3060,10 +3257,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 86,
-          "wall_time_s": 15.1315,
-          "stall_time_s": 3.1575,
-          "max_target_disp_m": 0.1591
+          "steps": 91,
+          "wall_time_s": 7.9529,
+          "sim_host_wall_s": 19.6166,
+          "stall_time_s": 3.3944,
+          "max_target_disp_m": 0.1758
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -3073,9 +3271,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 44.5473,
-          "stall_time_s": 9.0821,
-          "max_target_disp_m": 0.1733
+          "wall_time_s": 21.8022,
+          "sim_host_wall_s": 54.9876,
+          "stall_time_s": 8.7768,
+          "max_target_disp_m": 0.148
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -3085,9 +3284,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 44.7626,
-          "stall_time_s": 9.124,
-          "max_target_disp_m": 0.2888
+          "wall_time_s": 22.0275,
+          "sim_host_wall_s": 55.4229,
+          "stall_time_s": 9.0016,
+          "max_target_disp_m": 0.2349
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -3097,9 +3297,10 @@
           "init_idx": 0,
           "success": true,
           "steps": 117,
-          "wall_time_s": 13.3853,
-          "stall_time_s": 4.2378,
-          "max_target_disp_m": 0.1047
+          "wall_time_s": 10.1487,
+          "sim_host_wall_s": 16.6509,
+          "stall_time_s": 4.2851,
+          "max_target_disp_m": 0.1009
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -3107,11 +3308,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 29.8377,
-          "stall_time_s": 9.1552,
-          "max_target_disp_m": 0.0385
+          "success": true,
+          "steps": 146,
+          "wall_time_s": 12.8509,
+          "sim_host_wall_s": 21.3686,
+          "stall_time_s": 5.5323,
+          "max_target_disp_m": 0.1021
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -3121,9 +3323,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 163.6077,
-          "stall_time_s": 9.0008,
-          "max_target_disp_m": 0.1582
+          "wall_time_s": 22.8627,
+          "sim_host_wall_s": 170.0969,
+          "stall_time_s": 9.8267,
+          "max_target_disp_m": 0.1393
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -3133,9 +3336,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 166.5193,
-          "stall_time_s": 9.194,
-          "max_target_disp_m": 0.1166
+          "wall_time_s": 21.7276,
+          "sim_host_wall_s": 141.9603,
+          "stall_time_s": 8.7008,
+          "max_target_disp_m": 0.1215
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -3144,10 +3348,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 148,
-          "wall_time_s": 96.3198,
-          "stall_time_s": 5.3846,
-          "max_target_disp_m": 0.2334
+          "steps": 147,
+          "wall_time_s": 12.3095,
+          "sim_host_wall_s": 79.8357,
+          "stall_time_s": 4.9447,
+          "max_target_disp_m": 0.2393
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -3156,10 +3361,11 @@
           "level": "l2",
           "init_idx": 1,
           "success": true,
-          "steps": 99,
-          "wall_time_s": 80.5483,
-          "stall_time_s": 3.5779,
-          "max_target_disp_m": 0.1551
+          "steps": 106,
+          "wall_time_s": 9.5112,
+          "sim_host_wall_s": 84.9462,
+          "stall_time_s": 4.1977,
+          "max_target_disp_m": 0.1613
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -3167,11 +3373,12 @@
           "task_id": 1,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 166.4035,
-          "stall_time_s": 9.3201,
-          "max_target_disp_m": 0.2098
+          "success": true,
+          "steps": 176,
+          "wall_time_s": 15.1715,
+          "sim_host_wall_s": 106.4126,
+          "stall_time_s": 6.3525,
+          "max_target_disp_m": 0.2287
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -3181,9 +3388,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 167.0873,
-          "stall_time_s": 9.1909,
-          "max_target_disp_m": 0.2614
+          "wall_time_s": 21.9636,
+          "sim_host_wall_s": 147.0406,
+          "stall_time_s": 8.9385,
+          "max_target_disp_m": 0.2911
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -3193,9 +3401,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.469,
-          "stall_time_s": 9.3043,
-          "max_target_disp_m": 0.0642
+          "wall_time_s": 22.2187,
+          "sim_host_wall_s": 35.5801,
+          "stall_time_s": 9.1937,
+          "max_target_disp_m": 0.1279
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -3203,11 +3412,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 28.0454,
-          "stall_time_s": 9.1711,
-          "max_target_disp_m": 0.0884
+          "success": true,
+          "steps": 170,
+          "wall_time_s": 14.5425,
+          "sim_host_wall_s": 22.5859,
+          "stall_time_s": 6.025,
+          "max_target_disp_m": 0.1451
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -3217,9 +3427,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 45.8041,
-          "stall_time_s": 9.2838,
-          "max_target_disp_m": 0.1795
+          "wall_time_s": 22.1987,
+          "sim_host_wall_s": 56.941,
+          "stall_time_s": 9.1744,
+          "max_target_disp_m": 0.1964
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -3229,9 +3440,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 46.6197,
-          "stall_time_s": 9.3382,
-          "max_target_disp_m": 0.2102
+          "wall_time_s": 21.4485,
+          "sim_host_wall_s": 52.3681,
+          "stall_time_s": 8.4248,
+          "max_target_disp_m": 0.2007
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -3239,11 +3451,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 48.5816,
-          "stall_time_s": 9.4033,
-          "max_target_disp_m": 0.2137
+          "success": true,
+          "steps": 88,
+          "wall_time_s": 7.3325,
+          "sim_host_wall_s": 18.025,
+          "stall_time_s": 2.9247,
+          "max_target_disp_m": 0.1876
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -3253,9 +3466,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 49.0388,
-          "stall_time_s": 9.2145,
-          "max_target_disp_m": 0.0842
+          "wall_time_s": 21.4638,
+          "sim_host_wall_s": 52.2286,
+          "stall_time_s": 8.4382,
+          "max_target_disp_m": 0.3351
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -3264,10 +3478,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 201,
-          "wall_time_s": 39.4263,
-          "stall_time_s": 7.599,
-          "max_target_disp_m": 0.3127
+          "steps": 108,
+          "wall_time_s": 8.9109,
+          "sim_host_wall_s": 21.4795,
+          "stall_time_s": 3.5013,
+          "max_target_disp_m": 0.1758
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -3275,20 +3490,21 @@
           "task_id": 1,
           "level": "l3",
           "init_idx": 1,
-          "success": true,
-          "steps": 182,
-          "wall_time_s": 34.6726,
-          "stall_time_s": 6.6777,
-          "max_target_disp_m": 0.3428
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 22.3726,
+          "sim_host_wall_s": 59.5556,
+          "stall_time_s": 9.3441,
+          "max_target_disp_m": 0.2855
         }
       ],
-      "chunk_infer_p50_ms": 350.7,
-      "chunk_infer_p99_ms": 438.9,
-      "paired_common_successes": 5,
+      "chunk_infer_p50_ms": 344.6,
+      "chunk_infer_p99_ms": 407.39,
+      "paired_common_successes": 7,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 19.79,
-        "tempo_s": 11.22,
-        "tempo_speedup_x": 1.76
+        "baseline_s": 11.78,
+        "tempo_s": 6.84,
+        "tempo_speedup_x": 1.72
       }
     },
     {
@@ -3297,57 +3513,57 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 2,
       "episodes": 24,
-      "successes": 13,
-      "success_rate_pct": 54.2,
-      "mean_time_to_success_s": 36.34,
-      "mean_steps_to_success": 138.5,
-      "mean_episode_wall_s": 52.06,
-      "total_wall_s": 1249.46,
-      "total_stall_s": 131.82,
-      "robot_stall_pct": 10.6,
-      "fleet_goodput_tasks_per_min": 1.25,
-      "max_target_disp_m": 0.4688,
+      "successes": 9,
+      "success_rate_pct": 37.5,
+      "mean_time_to_success_s": 10.74,
+      "mean_steps_to_success": 137.4,
+      "mean_episode_wall_s": 16.65,
+      "total_wall_s": 399.55,
+      "total_stall_s": 142.21,
+      "robot_stall_pct": 35.6,
+      "fleet_goodput_tasks_per_min": 2.7,
+      "max_target_disp_m": 0.426,
       "per_group": {
         "l1": {
           "episodes": 8,
-          "successes": 6,
-          "success_rate_pct": 75.0,
-          "mean_time_to_success_s": 17.89,
-          "mean_steps_to_success": 132.8,
-          "mean_episode_wall_s": 23.62,
-          "total_wall_s": 188.99,
-          "total_stall_s": 37.24,
-          "robot_stall_pct": 19.7,
-          "fleet_goodput_tasks_per_min": 3.81,
-          "max_target_disp_m": 0.3842,
+          "successes": 5,
+          "success_rate_pct": 62.5,
+          "mean_time_to_success_s": 10.49,
+          "mean_steps_to_success": 134.4,
+          "mean_episode_wall_s": 14.08,
+          "total_wall_s": 112.68,
+          "total_stall_s": 39.94,
+          "robot_stall_pct": 35.5,
+          "fleet_goodput_tasks_per_min": 5.32,
+          "max_target_disp_m": 0.426,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
-          "successes": 4,
-          "success_rate_pct": 50.0,
-          "mean_time_to_success_s": 80.04,
-          "mean_steps_to_success": 157.0,
-          "mean_episode_wall_s": 100.49,
-          "total_wall_s": 803.93,
-          "total_stall_s": 47.4,
-          "robot_stall_pct": 5.9,
-          "fleet_goodput_tasks_per_min": 0.6,
-          "max_target_disp_m": 0.4369,
+          "successes": 3,
+          "success_rate_pct": 37.5,
+          "mean_time_to_success_s": 11.98,
+          "mean_steps_to_success": 152.7,
+          "mean_episode_wall_s": 17.24,
+          "total_wall_s": 137.91,
+          "total_stall_s": 49.83,
+          "robot_stall_pct": 36.1,
+          "fleet_goodput_tasks_per_min": 2.61,
+          "max_target_disp_m": 0.3379,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 3,
-          "success_rate_pct": 37.5,
-          "mean_time_to_success_s": 14.97,
-          "mean_steps_to_success": 125.0,
-          "mean_episode_wall_s": 32.07,
-          "total_wall_s": 256.54,
-          "total_stall_s": 47.19,
-          "robot_stall_pct": 18.4,
-          "fleet_goodput_tasks_per_min": 1.4,
-          "max_target_disp_m": 0.4688,
+          "successes": 1,
+          "success_rate_pct": 12.5,
+          "mean_time_to_success_s": 8.25,
+          "mean_steps_to_success": 107.0,
+          "mean_episode_wall_s": 18.62,
+          "total_wall_s": 148.97,
+          "total_stall_s": 52.44,
+          "robot_stall_pct": 35.2,
+          "fleet_goodput_tasks_per_min": 0.81,
+          "max_target_disp_m": 0.3938,
           "speed_mps": 0.09
         }
       },
@@ -3359,10 +3575,11 @@
           "level": "l1",
           "init_idx": 0,
           "success": true,
-          "steps": 117,
-          "wall_time_s": 11.228,
-          "stall_time_s": 3.3649,
-          "max_target_disp_m": 0.1003
+          "steps": 116,
+          "wall_time_s": 9.0898,
+          "sim_host_wall_s": 14.2337,
+          "stall_time_s": 3.2776,
+          "max_target_disp_m": 0.1056
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -3372,9 +3589,10 @@
           "init_idx": 1,
           "success": true,
           "steps": 112,
-          "wall_time_s": 10.446,
-          "stall_time_s": 3.1083,
-          "max_target_disp_m": 0.1316
+          "wall_time_s": 8.8023,
+          "sim_host_wall_s": 13.8301,
+          "stall_time_s": 3.1921,
+          "max_target_disp_m": 0.1284
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -3384,9 +3602,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 40.2552,
-          "stall_time_s": 7.2917,
-          "max_target_disp_m": 0.1192
+          "wall_time_s": 20.2306,
+          "sim_host_wall_s": 51.3293,
+          "stall_time_s": 7.2074,
+          "max_target_disp_m": 0.1927
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -3395,10 +3614,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 133,
-          "wall_time_s": 18.3661,
-          "stall_time_s": 3.8236,
-          "max_target_disp_m": 0.3842
+          "steps": 153,
+          "wall_time_s": 11.8898,
+          "sim_host_wall_s": 26.3169,
+          "stall_time_s": 4.2263,
+          "max_target_disp_m": 0.426
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -3407,10 +3627,11 @@
           "level": "l1",
           "init_idx": 0,
           "success": true,
-          "steps": 110,
-          "wall_time_s": 17.1597,
-          "stall_time_s": 3.1873,
-          "max_target_disp_m": 0.1873
+          "steps": 193,
+          "wall_time_s": 15.0221,
+          "sim_host_wall_s": 35.9686,
+          "stall_time_s": 5.3553,
+          "max_target_disp_m": 0.1394
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -3419,10 +3640,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 140,
-          "wall_time_s": 21.5885,
-          "stall_time_s": 3.9236,
-          "max_target_disp_m": 0.1778
+          "steps": 98,
+          "wall_time_s": 7.6353,
+          "sim_host_wall_s": 18.2826,
+          "stall_time_s": 2.7265,
+          "max_target_disp_m": 0.1794
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -3432,9 +3654,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 41.371,
-          "stall_time_s": 7.3045,
-          "max_target_disp_m": 0.1169
+          "wall_time_s": 20.05,
+          "sim_host_wall_s": 48.8284,
+          "stall_time_s": 7.0269,
+          "max_target_disp_m": 0.1365
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -3442,11 +3665,12 @@
           "task_id": 1,
           "level": "l1",
           "init_idx": 1,
-          "success": true,
-          "steps": 185,
-          "wall_time_s": 28.5799,
-          "stall_time_s": 5.2341,
-          "max_target_disp_m": 0.2267
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 19.9568,
+          "sim_host_wall_s": 46.6983,
+          "stall_time_s": 6.9328,
+          "max_target_disp_m": 0.2422
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -3455,10 +3679,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 123,
-          "wall_time_s": 12.5819,
-          "stall_time_s": 3.5274,
-          "max_target_disp_m": 0.1256
+          "steps": 133,
+          "wall_time_s": 10.3793,
+          "sim_host_wall_s": 16.8834,
+          "stall_time_s": 3.717,
+          "max_target_disp_m": 0.1241
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -3466,11 +3691,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 27.6892,
-          "stall_time_s": 7.2229,
-          "max_target_disp_m": 0.1952
+          "success": true,
+          "steps": 173,
+          "wall_time_s": 13.383,
+          "sim_host_wall_s": 21.7218,
+          "stall_time_s": 4.7155,
+          "max_target_disp_m": 0.1347
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -3480,9 +3706,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 152.1188,
-          "stall_time_s": 7.3756,
-          "max_target_disp_m": 0.1374
+          "wall_time_s": 20.3498,
+          "sim_host_wall_s": 133.5982,
+          "stall_time_s": 7.324,
+          "max_target_disp_m": 0.1378
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -3490,11 +3717,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": true,
-          "steps": 237,
-          "wall_time_s": 135.8347,
-          "stall_time_s": 6.8534,
-          "max_target_disp_m": 0.4369
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.7333,
+          "sim_host_wall_s": 143.1639,
+          "stall_time_s": 7.7038,
+          "max_target_disp_m": 0.3379
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -3503,10 +3731,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 160,
-          "wall_time_s": 93.1856,
-          "stall_time_s": 4.5321,
-          "max_target_disp_m": 0.2927
+          "steps": 152,
+          "wall_time_s": 12.1855,
+          "sim_host_wall_s": 84.9793,
+          "stall_time_s": 4.5642,
+          "max_target_disp_m": 0.2775
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -3514,11 +3743,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": true,
-          "steps": 108,
-          "wall_time_s": 78.5574,
-          "stall_time_s": 3.0727,
-          "max_target_disp_m": 0.1821
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.4584,
+          "sim_host_wall_s": 161.6147,
+          "stall_time_s": 7.431,
+          "max_target_disp_m": 0.1915
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -3528,9 +3758,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 152.4001,
-          "stall_time_s": 7.4128,
-          "max_target_disp_m": 0.2147
+          "wall_time_s": 20.2341,
+          "sim_host_wall_s": 128.411,
+          "stall_time_s": 7.2099,
+          "max_target_disp_m": 0.2043
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -3540,9 +3771,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 151.5578,
-          "stall_time_s": 7.4002,
-          "max_target_disp_m": 0.288
+          "wall_time_s": 20.1853,
+          "sim_host_wall_s": 128.2717,
+          "stall_time_s": 7.1613,
+          "max_target_disp_m": 0.1727
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -3550,11 +3782,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 0,
-          "success": true,
-          "steps": 116,
-          "wall_time_s": 10.9459,
-          "stall_time_s": 3.2402,
-          "max_target_disp_m": 0.1072
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 19.9816,
+          "sim_host_wall_s": 32.6835,
+          "stall_time_s": 6.958,
+          "max_target_disp_m": 0.019
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -3563,10 +3796,11 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 115,
-          "wall_time_s": 10.8838,
-          "stall_time_s": 3.2236,
-          "max_target_disp_m": 0.1139
+          "steps": 107,
+          "wall_time_s": 8.2475,
+          "sim_host_wall_s": 12.4869,
+          "stall_time_s": 2.888,
+          "max_target_disp_m": 0.1021
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -3576,9 +3810,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 41.5787,
-          "stall_time_s": 7.3018,
-          "max_target_disp_m": 0.153
+          "wall_time_s": 20.0438,
+          "sim_host_wall_s": 47.1762,
+          "stall_time_s": 7.0182,
+          "max_target_disp_m": 0.3561
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -3588,9 +3823,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 42.5267,
-          "stall_time_s": 7.389,
-          "max_target_disp_m": 0.1695
+          "wall_time_s": 20.0973,
+          "sim_host_wall_s": 50.2445,
+          "stall_time_s": 7.0741,
+          "max_target_disp_m": 0.1766
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -3600,9 +3836,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 42.8045,
-          "stall_time_s": 7.3096,
-          "max_target_disp_m": 0.1179
+          "wall_time_s": 20.0529,
+          "sim_host_wall_s": 50.0091,
+          "stall_time_s": 7.0275,
+          "max_target_disp_m": 0.12
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -3612,9 +3849,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 43.1069,
-          "stall_time_s": 7.3202,
-          "max_target_disp_m": 0.0939
+          "wall_time_s": 20.1338,
+          "sim_host_wall_s": 49.1153,
+          "stall_time_s": 7.1097,
+          "max_target_disp_m": 0.1946
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -3622,11 +3860,12 @@
           "task_id": 1,
           "level": "l3",
           "init_idx": 0,
-          "success": true,
-          "steps": 144,
-          "wall_time_s": 23.0912,
-          "stall_time_s": 4.0769,
-          "max_target_disp_m": 0.208
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 20.3768,
+          "sim_host_wall_s": 51.7032,
+          "stall_time_s": 7.3536,
+          "max_target_disp_m": 0.35
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -3636,18 +3875,19 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 41.6002,
-          "stall_time_s": 7.3269,
-          "max_target_disp_m": 0.4688
+          "wall_time_s": 20.0319,
+          "sim_host_wall_s": 49.8133,
+          "stall_time_s": 7.0087,
+          "max_target_disp_m": 0.3938
         }
       ],
-      "chunk_infer_p50_ms": 111.44,
-      "chunk_infer_p99_ms": 127.74,
-      "paired_common_successes": 6,
+      "chunk_infer_p50_ms": 108.87,
+      "chunk_infer_p99_ms": 129.56,
+      "paired_common_successes": 7,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 13.99,
-        "tempo_s": 9.8,
-        "tempo_speedup_x": 1.43
+        "baseline_s": 10.93,
+        "tempo_s": 6.73,
+        "tempo_speedup_x": 1.62
       }
     },
     {
@@ -3656,57 +3896,57 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 2,
       "episodes": 24,
-      "successes": 2,
-      "success_rate_pct": 8.3,
-      "mean_time_to_success_s": 9.73,
-      "mean_steps_to_success": 179.0,
-      "mean_episode_wall_s": 46.08,
-      "total_wall_s": 1105.9,
-      "total_stall_s": 10.5,
-      "robot_stall_pct": 0.9,
-      "fleet_goodput_tasks_per_min": 0.22,
-      "max_target_disp_m": 0.1803,
+      "successes": 5,
+      "success_rate_pct": 20.8,
+      "mean_time_to_success_s": 6.08,
+      "mean_steps_to_success": 110.8,
+      "mean_episode_wall_s": 11.97,
+      "total_wall_s": 287.19,
+      "total_stall_s": 11.96,
+      "robot_stall_pct": 4.2,
+      "fleet_goodput_tasks_per_min": 2.09,
+      "max_target_disp_m": 0.4479,
       "per_group": {
         "l1": {
           "episodes": 8,
-          "successes": 1,
-          "success_rate_pct": 12.5,
-          "mean_time_to_success_s": 9.6,
-          "mean_steps_to_success": 177.0,
-          "mean_episode_wall_s": 23.35,
-          "total_wall_s": 186.83,
-          "total_stall_s": 3.41,
-          "robot_stall_pct": 1.8,
-          "fleet_goodput_tasks_per_min": 0.64,
-          "max_target_disp_m": 0.1342,
+          "successes": 2,
+          "success_rate_pct": 25.0,
+          "mean_time_to_success_s": 5.37,
+          "mean_steps_to_success": 96.0,
+          "mean_episode_wall_s": 11.45,
+          "total_wall_s": 91.63,
+          "total_stall_s": 3.86,
+          "robot_stall_pct": 4.2,
+          "fleet_goodput_tasks_per_min": 2.62,
+          "max_target_disp_m": 0.3593,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
-          "successes": 0,
-          "success_rate_pct": 0.0,
-          "mean_time_to_success_s": null,
-          "mean_steps_to_success": null,
-          "mean_episode_wall_s": 89.97,
-          "total_wall_s": 719.79,
-          "total_stall_s": 3.64,
-          "robot_stall_pct": 0.5,
-          "fleet_goodput_tasks_per_min": 0.0,
-          "max_target_disp_m": 0.1596,
+          "successes": 2,
+          "success_rate_pct": 25.0,
+          "mean_time_to_success_s": 6.63,
+          "mean_steps_to_success": 124.5,
+          "mean_episode_wall_s": 11.77,
+          "total_wall_s": 94.16,
+          "total_stall_s": 3.54,
+          "robot_stall_pct": 3.8,
+          "fleet_goodput_tasks_per_min": 2.55,
+          "max_target_disp_m": 0.1811,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
           "successes": 1,
           "success_rate_pct": 12.5,
-          "mean_time_to_success_s": 9.85,
-          "mean_steps_to_success": 181.0,
-          "mean_episode_wall_s": 24.91,
-          "total_wall_s": 199.29,
-          "total_stall_s": 3.44,
-          "robot_stall_pct": 1.7,
-          "fleet_goodput_tasks_per_min": 0.6,
-          "max_target_disp_m": 0.1803,
+          "mean_time_to_success_s": 6.38,
+          "mean_steps_to_success": 113.0,
+          "mean_episode_wall_s": 12.68,
+          "total_wall_s": 101.4,
+          "total_stall_s": 4.56,
+          "robot_stall_pct": 4.5,
+          "fleet_goodput_tasks_per_min": 1.18,
+          "max_target_disp_m": 0.4479,
           "speed_mps": 0.09
         }
       },
@@ -3717,11 +3957,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 13.7364,
-          "stall_time_s": 0.4095,
-          "max_target_disp_m": 0.0302
+          "success": true,
+          "steps": 122,
+          "wall_time_s": 6.5533,
+          "sim_host_wall_s": 10.62,
+          "stall_time_s": 0.4412,
+          "max_target_disp_m": 0.1398
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -3729,11 +3970,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": true,
-          "steps": 177,
-          "wall_time_s": 9.6027,
-          "stall_time_s": 0.4175,
-          "max_target_disp_m": 0.0847
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.4008,
+          "sim_host_wall_s": 22.4826,
+          "stall_time_s": 0.373,
+          "max_target_disp_m": 0.0908
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -3743,9 +3985,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 26.4197,
-          "stall_time_s": 0.4421,
-          "max_target_disp_m": 0.1155
+          "wall_time_s": 13.4904,
+          "sim_host_wall_s": 36.5273,
+          "stall_time_s": 0.466,
+          "max_target_disp_m": 0.3488
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -3755,9 +3998,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 26.7935,
-          "stall_time_s": 0.4466,
-          "max_target_disp_m": 0.1142
+          "wall_time_s": 13.4257,
+          "sim_host_wall_s": 36.3577,
+          "stall_time_s": 0.4009,
+          "max_target_disp_m": 0.1295
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -3767,9 +4011,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 27.484,
-          "stall_time_s": 0.4167,
-          "max_target_disp_m": 0.1342
+          "wall_time_s": 13.4299,
+          "sim_host_wall_s": 35.6622,
+          "stall_time_s": 0.4059,
+          "max_target_disp_m": 0.1144
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -3777,11 +4022,12 @@
           "task_id": 0,
           "level": "l1",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 28.2616,
-          "stall_time_s": 0.3803,
-          "max_target_disp_m": 0.0937
+          "success": true,
+          "steps": 70,
+          "wall_time_s": 4.1835,
+          "sim_host_wall_s": 10.914,
+          "stall_time_s": 0.6769,
+          "max_target_disp_m": 0.2004
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -3791,9 +4037,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.6745,
-          "stall_time_s": 0.4611,
-          "max_target_disp_m": 0.117
+          "wall_time_s": 13.4452,
+          "sim_host_wall_s": 35.2496,
+          "stall_time_s": 0.4198,
+          "max_target_disp_m": 0.2114
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -3803,9 +4050,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 25.8593,
-          "stall_time_s": 0.4406,
-          "max_target_disp_m": 0.1155
+          "wall_time_s": 13.7006,
+          "sim_host_wall_s": 36.3001,
+          "stall_time_s": 0.6763,
+          "max_target_disp_m": 0.3593
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -3813,11 +4061,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 14.343,
-          "stall_time_s": 0.4398,
-          "max_target_disp_m": 0.0352
+          "success": true,
+          "steps": 124,
+          "wall_time_s": 6.6362,
+          "sim_host_wall_s": 10.5987,
+          "stall_time_s": 0.4242,
+          "max_target_disp_m": 0.1232
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -3825,11 +4074,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 1,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 14.0903,
-          "stall_time_s": 0.4676,
-          "max_target_disp_m": 0.018
+          "success": true,
+          "steps": 125,
+          "wall_time_s": 6.6199,
+          "sim_host_wall_s": 10.6284,
+          "stall_time_s": 0.3583,
+          "max_target_disp_m": 0.1114
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -3839,9 +4089,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 108.9021,
-          "stall_time_s": 0.4726,
-          "max_target_disp_m": 0.139
+          "wall_time_s": 13.4361,
+          "sim_host_wall_s": 90.1428,
+          "stall_time_s": 0.4116,
+          "max_target_disp_m": 0.1391
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -3851,9 +4102,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 110.1175,
-          "stall_time_s": 0.471,
-          "max_target_disp_m": 0.1211
+          "wall_time_s": 13.4408,
+          "sim_host_wall_s": 88.999,
+          "stall_time_s": 0.4176,
+          "max_target_disp_m": 0.1201
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -3863,9 +4115,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 111.5577,
-          "stall_time_s": 0.4257,
-          "max_target_disp_m": 0.0938
+          "wall_time_s": 13.4275,
+          "sim_host_wall_s": 89.8462,
+          "stall_time_s": 0.4017,
+          "max_target_disp_m": 0.1132
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -3875,9 +4128,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 138.3358,
-          "stall_time_s": 0.4341,
-          "max_target_disp_m": 0.1163
+          "wall_time_s": 13.721,
+          "sim_host_wall_s": 111.9947,
+          "stall_time_s": 0.6968,
+          "max_target_disp_m": 0.1172
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -3887,9 +4141,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 111.054,
-          "stall_time_s": 0.4648,
-          "max_target_disp_m": 0.1266
+          "wall_time_s": 13.442,
+          "sim_host_wall_s": 89.9326,
+          "stall_time_s": 0.4177,
+          "max_target_disp_m": 0.1258
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -3899,9 +4154,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 111.3852,
-          "stall_time_s": 0.4659,
-          "max_target_disp_m": 0.1596
+          "wall_time_s": 13.4349,
+          "sim_host_wall_s": 96.5438,
+          "stall_time_s": 0.4076,
+          "max_target_disp_m": 0.1811
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -3911,9 +4167,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 13.8208,
-          "stall_time_s": 0.4448,
-          "max_target_disp_m": 0.059
+          "wall_time_s": 13.4733,
+          "sim_host_wall_s": 23.1773,
+          "stall_time_s": 0.4456,
+          "max_target_disp_m": 0.114
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -3922,10 +4179,11 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 181,
-          "wall_time_s": 9.8481,
-          "stall_time_s": 0.4373,
-          "max_target_disp_m": 0.1361
+          "steps": 113,
+          "wall_time_s": 6.3839,
+          "sim_host_wall_s": 10.1467,
+          "stall_time_s": 0.7239,
+          "max_target_disp_m": 0.1243
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -3935,9 +4193,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.0672,
-          "stall_time_s": 0.4384,
-          "max_target_disp_m": 0.145
+          "wall_time_s": 13.7357,
+          "sim_host_wall_s": 37.401,
+          "stall_time_s": 0.7108,
+          "max_target_disp_m": 0.1704
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -3947,9 +4206,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.9751,
-          "stall_time_s": 0.4651,
-          "max_target_disp_m": 0.1705
+          "wall_time_s": 13.4392,
+          "sim_host_wall_s": 38.5539,
+          "stall_time_s": 0.416,
+          "max_target_disp_m": 0.1719
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -3959,9 +4219,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 28.9059,
-          "stall_time_s": 0.4229,
-          "max_target_disp_m": 0.1136
+          "wall_time_s": 13.7284,
+          "sim_host_wall_s": 38.2538,
+          "stall_time_s": 0.7027,
+          "max_target_disp_m": 0.1559
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -3971,9 +4232,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 29.5704,
-          "stall_time_s": 0.4088,
-          "max_target_disp_m": 0.0843
+          "wall_time_s": 13.4048,
+          "sim_host_wall_s": 36.5565,
+          "stall_time_s": 0.3795,
+          "max_target_disp_m": 0.3133
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -3983,9 +4245,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 29.7847,
-          "stall_time_s": 0.4092,
-          "max_target_disp_m": 0.1803
+          "wall_time_s": 13.8053,
+          "sim_host_wall_s": 39.259,
+          "stall_time_s": 0.7789,
+          "max_target_disp_m": 0.1797
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -3995,20 +4258,21 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 30.3152,
-          "stall_time_s": 0.4158,
-          "max_target_disp_m": 0.1395
+          "wall_time_s": 13.4342,
+          "sim_host_wall_s": 38.2799,
+          "stall_time_s": 0.407,
+          "max_target_disp_m": 0.4479
         }
       ],
-      "fast_ttac_p50_ms": 1510.9,
-      "fast_ttac_p99_ms": 6225.57,
-      "act_p50_us": 4443.31,
-      "underruns": 4516,
-      "paired_common_successes": 1,
+      "fast_ttac_p50_ms": 599.9,
+      "fast_ttac_p99_ms": 2224.87,
+      "act_p50_us": 3750.42,
+      "underruns": 1660,
+      "paired_common_successes": 4,
       "paired_wall_s_vs_tempo": {
-        "baseline_s": 9.6,
-        "tempo_s": 11.61,
-        "tempo_speedup_x": 0.83
+        "baseline_s": 6.0,
+        "tempo_s": 5.6,
+        "tempo_speedup_x": 1.07
       }
     },
     {
@@ -4017,57 +4281,57 @@
       "model": "lerobot/pi05_libero_finetuned_v044",
       "num_streams": 2,
       "episodes": 24,
-      "successes": 11,
-      "success_rate_pct": 45.8,
-      "mean_time_to_success_s": 11.29,
-      "mean_steps_to_success": 150.7,
-      "mean_episode_wall_s": 36.73,
-      "total_wall_s": 881.47,
+      "successes": 13,
+      "success_rate_pct": 54.2,
+      "mean_time_to_success_s": 6.56,
+      "mean_steps_to_success": 128.8,
+      "mean_episode_wall_s": 9.58,
+      "total_wall_s": 229.85,
       "total_stall_s": 2.74,
-      "robot_stall_pct": 0.3,
-      "fleet_goodput_tasks_per_min": 1.5,
-      "max_target_disp_m": 0.4863,
+      "robot_stall_pct": 1.2,
+      "fleet_goodput_tasks_per_min": 6.79,
+      "max_target_disp_m": 0.4591,
       "per_group": {
         "l1": {
           "episodes": 8,
-          "successes": 4,
-          "success_rate_pct": 50.0,
-          "mean_time_to_success_s": 11.48,
-          "mean_steps_to_success": 164.2,
-          "mean_episode_wall_s": 17.71,
-          "total_wall_s": 141.68,
-          "total_stall_s": 0.91,
-          "robot_stall_pct": 0.6,
-          "fleet_goodput_tasks_per_min": 3.39,
-          "max_target_disp_m": 0.4863,
+          "successes": 5,
+          "success_rate_pct": 62.5,
+          "mean_time_to_success_s": 5.97,
+          "mean_steps_to_success": 117.0,
+          "mean_episode_wall_s": 8.66,
+          "total_wall_s": 69.29,
+          "total_stall_s": 0.92,
+          "robot_stall_pct": 1.3,
+          "fleet_goodput_tasks_per_min": 8.66,
+          "max_target_disp_m": 0.3609,
           "speed_mps": 0.03
         },
         "l2": {
           "episodes": 8,
-          "successes": 2,
-          "success_rate_pct": 25.0,
-          "mean_time_to_success_s": 6.28,
-          "mean_steps_to_success": 121.5,
-          "mean_episode_wall_s": 76.74,
-          "total_wall_s": 613.95,
+          "successes": 5,
+          "success_rate_pct": 62.5,
+          "mean_time_to_success_s": 7.3,
+          "mean_steps_to_success": 143.6,
+          "mean_episode_wall_s": 9.49,
+          "total_wall_s": 75.95,
           "total_stall_s": 0.91,
-          "robot_stall_pct": 0.1,
-          "fleet_goodput_tasks_per_min": 0.39,
-          "max_target_disp_m": 0.2337,
+          "robot_stall_pct": 1.2,
+          "fleet_goodput_tasks_per_min": 7.9,
+          "max_target_disp_m": 0.3158,
           "speed_mps": 0.06
         },
         "l3": {
           "episodes": 8,
-          "successes": 5,
-          "success_rate_pct": 62.5,
-          "mean_time_to_success_s": 13.15,
-          "mean_steps_to_success": 151.6,
-          "mean_episode_wall_s": 15.73,
-          "total_wall_s": 125.84,
+          "successes": 3,
+          "success_rate_pct": 37.5,
+          "mean_time_to_success_s": 6.31,
+          "mean_steps_to_success": 123.7,
+          "mean_episode_wall_s": 10.58,
+          "total_wall_s": 84.61,
           "total_stall_s": 0.91,
-          "robot_stall_pct": 0.7,
-          "fleet_goodput_tasks_per_min": 4.77,
-          "max_target_disp_m": 0.4382,
+          "robot_stall_pct": 1.1,
+          "fleet_goodput_tasks_per_min": 4.25,
+          "max_target_disp_m": 0.4591,
           "speed_mps": 0.09
         }
       },
@@ -4079,10 +4343,11 @@
           "level": "l1",
           "init_idx": 0,
           "success": true,
-          "steps": 118,
-          "wall_time_s": 6.075,
-          "stall_time_s": 0.0979,
-          "max_target_disp_m": 0.078
+          "steps": 119,
+          "wall_time_s": 6.0588,
+          "sim_host_wall_s": 8.7866,
+          "stall_time_s": 0.0971,
+          "max_target_disp_m": 0.0775
         },
         {
           "scene_id": "libero_goal_task00__l1__traj01",
@@ -4091,10 +4356,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 228,
-          "wall_time_s": 11.6077,
-          "stall_time_s": 0.1034,
-          "max_target_disp_m": 0.0942
+          "steps": 113,
+          "wall_time_s": 5.7587,
+          "sim_host_wall_s": 8.2925,
+          "stall_time_s": 0.0975,
+          "max_target_disp_m": 0.1182
         },
         {
           "scene_id": "libero_object_task00__l1__traj00",
@@ -4104,9 +4370,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 25.7685,
-          "stall_time_s": 0.122,
-          "max_target_disp_m": 0.1439
+          "wall_time_s": 13.1395,
+          "sim_host_wall_s": 33.5757,
+          "stall_time_s": 0.1165,
+          "max_target_disp_m": 0.3038
         },
         {
           "scene_id": "libero_object_task00__l1__traj01",
@@ -4116,9 +4383,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 20.2451,
-          "stall_time_s": 0.123,
-          "max_target_disp_m": 0.4863
+          "wall_time_s": 13.1382,
+          "sim_host_wall_s": 34.4196,
+          "stall_time_s": 0.1153,
+          "max_target_disp_m": 0.1171
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj00",
@@ -4127,10 +4395,11 @@
           "level": "l1",
           "init_idx": 0,
           "success": true,
-          "steps": 77,
-          "wall_time_s": 7.2901,
-          "stall_time_s": 0.1213,
-          "max_target_disp_m": 0.142
+          "steps": 132,
+          "wall_time_s": 6.7314,
+          "sim_host_wall_s": 16.978,
+          "stall_time_s": 0.1188,
+          "max_target_disp_m": 0.1625
         },
         {
           "scene_id": "libero_spatial_task00__l1__traj01",
@@ -4139,10 +4408,11 @@
           "level": "l1",
           "init_idx": 1,
           "success": true,
-          "steps": 234,
-          "wall_time_s": 20.9647,
-          "stall_time_s": 0.115,
-          "max_target_disp_m": 0.1825
+          "steps": 89,
+          "wall_time_s": 4.5798,
+          "sim_host_wall_s": 11.8272,
+          "stall_time_s": 0.121,
+          "max_target_disp_m": 0.1756
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj00",
@@ -4150,11 +4420,12 @@
           "task_id": 1,
           "level": "l1",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 25.8182,
-          "stall_time_s": 0.1192,
-          "max_target_disp_m": 0.4101
+          "success": true,
+          "steps": 132,
+          "wall_time_s": 6.7386,
+          "sim_host_wall_s": 17.5385,
+          "stall_time_s": 0.1268,
+          "max_target_disp_m": 0.3609
         },
         {
           "scene_id": "libero_spatial_task01__l1__traj01",
@@ -4164,9 +4435,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 23.9115,
-          "stall_time_s": 0.1116,
-          "max_target_disp_m": 0.2123
+          "wall_time_s": 13.1468,
+          "sim_host_wall_s": 34.014,
+          "stall_time_s": 0.1245,
+          "max_target_disp_m": 0.2501
         },
         {
           "scene_id": "libero_goal_task00__l2__traj00",
@@ -4175,10 +4447,11 @@
           "level": "l2",
           "init_idx": 0,
           "success": true,
-          "steps": 131,
-          "wall_time_s": 6.7582,
-          "stall_time_s": 0.1007,
-          "max_target_disp_m": 0.1355
+          "steps": 120,
+          "wall_time_s": 6.1079,
+          "sim_host_wall_s": 9.0262,
+          "stall_time_s": 0.0976,
+          "max_target_disp_m": 0.1441
         },
         {
           "scene_id": "libero_goal_task00__l2__traj01",
@@ -4187,10 +4460,11 @@
           "level": "l2",
           "init_idx": 1,
           "success": true,
-          "steps": 112,
-          "wall_time_s": 5.7972,
-          "stall_time_s": 0.0997,
-          "max_target_disp_m": 0.133
+          "steps": 111,
+          "wall_time_s": 5.6576,
+          "sim_host_wall_s": 8.3535,
+          "stall_time_s": 0.0978,
+          "max_target_disp_m": 0.1367
         },
         {
           "scene_id": "libero_object_task00__l2__traj00",
@@ -4198,11 +4472,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 94.7725,
-          "stall_time_s": 0.1204,
-          "max_target_disp_m": 0.1383
+          "success": true,
+          "steps": 112,
+          "wall_time_s": 5.7276,
+          "sim_host_wall_s": 36.5239,
+          "stall_time_s": 0.1177,
+          "max_target_disp_m": 0.3158
         },
         {
           "scene_id": "libero_object_task00__l2__traj01",
@@ -4212,9 +4487,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 96.1549,
-          "stall_time_s": 0.1245,
-          "max_target_disp_m": 0.1212
+          "wall_time_s": 13.1509,
+          "sim_host_wall_s": 86.8277,
+          "stall_time_s": 0.1254,
+          "max_target_disp_m": 0.1211
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj00",
@@ -4222,11 +4498,12 @@
           "task_id": 0,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 97.2418,
-          "stall_time_s": 0.1147,
-          "max_target_disp_m": 0.1907
+          "success": true,
+          "steps": 242,
+          "wall_time_s": 12.2368,
+          "sim_host_wall_s": 80.086,
+          "stall_time_s": 0.115,
+          "max_target_disp_m": 0.2696
         },
         {
           "scene_id": "libero_spatial_task00__l2__traj01",
@@ -4236,9 +4513,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 121.662,
-          "stall_time_s": 0.114,
-          "max_target_disp_m": 0.1159
+          "wall_time_s": 13.1432,
+          "sim_host_wall_s": 102.3459,
+          "stall_time_s": 0.1186,
+          "max_target_disp_m": 0.1593
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj00",
@@ -4246,11 +4524,12 @@
           "task_id": 1,
           "level": "l2",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 96.4386,
-          "stall_time_s": 0.1187,
-          "max_target_disp_m": 0.2337
+          "success": true,
+          "steps": 133,
+          "wall_time_s": 6.7827,
+          "sim_host_wall_s": 43.6245,
+          "stall_time_s": 0.1195,
+          "max_target_disp_m": 0.283
         },
         {
           "scene_id": "libero_spatial_task01__l2__traj01",
@@ -4260,9 +4539,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 95.1229,
-          "stall_time_s": 0.1184,
-          "max_target_disp_m": 0.1618
+          "wall_time_s": 13.1417,
+          "sim_host_wall_s": 85.8928,
+          "stall_time_s": 0.1194,
+          "max_target_disp_m": 0.1499
         },
         {
           "scene_id": "libero_goal_task00__l3__traj00",
@@ -4271,10 +4551,11 @@
           "level": "l3",
           "init_idx": 0,
           "success": true,
-          "steps": 118,
-          "wall_time_s": 6.0805,
-          "stall_time_s": 0.103,
-          "max_target_disp_m": 0.0751
+          "steps": 115,
+          "wall_time_s": 5.8566,
+          "sim_host_wall_s": 8.3948,
+          "stall_time_s": 0.0963,
+          "max_target_disp_m": 0.103
         },
         {
           "scene_id": "libero_goal_task00__l3__traj01",
@@ -4284,9 +4565,10 @@
           "init_idx": 1,
           "success": false,
           "steps": 260,
-          "wall_time_s": 13.1749,
-          "stall_time_s": 0.0981,
-          "max_target_disp_m": 0.0728
+          "wall_time_s": 13.1192,
+          "sim_host_wall_s": 19.896,
+          "stall_time_s": 0.0963,
+          "max_target_disp_m": 0.06
         },
         {
           "scene_id": "libero_object_task00__l3__traj00",
@@ -4294,11 +4576,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 0,
-          "success": false,
-          "steps": 260,
-          "wall_time_s": 22.5449,
-          "stall_time_s": 0.1183,
-          "max_target_disp_m": 0.4155
+          "success": true,
+          "steps": 152,
+          "wall_time_s": 7.7287,
+          "sim_host_wall_s": 17.5549,
+          "stall_time_s": 0.1148,
+          "max_target_disp_m": 0.4591
         },
         {
           "scene_id": "libero_object_task00__l3__traj01",
@@ -4306,11 +4589,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 1,
-          "success": true,
-          "steps": 183,
-          "wall_time_s": 15.9123,
-          "stall_time_s": 0.1202,
-          "max_target_disp_m": 0.4382
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.1424,
+          "sim_host_wall_s": 33.3545,
+          "stall_time_s": 0.1199,
+          "max_target_disp_m": 0.1732
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj00",
@@ -4318,11 +4602,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 0,
-          "success": true,
-          "steps": 136,
-          "wall_time_s": 13.1698,
-          "stall_time_s": 0.1241,
-          "max_target_disp_m": 0.1687
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.1435,
+          "sim_host_wall_s": 33.4886,
+          "stall_time_s": 0.1201,
+          "max_target_disp_m": 0.2884
         },
         {
           "scene_id": "libero_spatial_task00__l3__traj01",
@@ -4330,11 +4615,12 @@
           "task_id": 0,
           "level": "l3",
           "init_idx": 1,
-          "success": true,
-          "steps": 167,
-          "wall_time_s": 15.5541,
-          "stall_time_s": 0.114,
-          "max_target_disp_m": 0.3016
+          "success": false,
+          "steps": 260,
+          "wall_time_s": 13.148,
+          "sim_host_wall_s": 33.8898,
+          "stall_time_s": 0.1254,
+          "max_target_disp_m": 0.2859
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj00",
@@ -4344,9 +4630,10 @@
           "init_idx": 0,
           "success": false,
           "steps": 260,
-          "wall_time_s": 24.3914,
-          "stall_time_s": 0.1188,
-          "max_target_disp_m": 0.3034
+          "wall_time_s": 13.1423,
+          "sim_host_wall_s": 33.6825,
+          "stall_time_s": 0.1171,
+          "max_target_disp_m": 0.2896
         },
         {
           "scene_id": "libero_spatial_task01__l3__traj01",
@@ -4355,16 +4642,17 @@
           "level": "l3",
           "init_idx": 1,
           "success": true,
-          "steps": 154,
-          "wall_time_s": 15.0105,
-          "stall_time_s": 0.1162,
-          "max_target_disp_m": 0.2951
+          "steps": 104,
+          "wall_time_s": 5.3328,
+          "sim_host_wall_s": 13.6031,
+          "stall_time_s": 0.1227,
+          "max_target_disp_m": 0.3752
         }
       ],
-      "fast_ttac_p50_ms": 25.16,
-      "fast_ttac_p99_ms": 43.67,
-      "act_p50_us": 2873.64,
-      "underruns": 1
+      "fast_ttac_p50_ms": 41.54,
+      "fast_ttac_p99_ms": 44.62,
+      "act_p50_us": 2613.47,
+      "underruns": 0
     }
   ]
 }

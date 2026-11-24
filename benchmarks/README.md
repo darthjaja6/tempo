@@ -46,35 +46,33 @@ End-to-end MuJoCo rollouts via `tempo.Engine` ([`libero_e2e_eval.json`](./libero
 
 ## 4. Real-Time Task Completion & Dynamic Reaction (`inspect-robots` × `LIBERO`)
 
-Evaluated on `1x RTX 4090` (`lerobot/pi05_libero_finetuned_v044`, 3.3B `BF16`) through [`robocurve/inspect-robots`](https://github.com/robocurve/inspect-robots) (`SELF_PACED` 20 Hz wall-clock physics, [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)) against three baselines: standard open-loop chunking (`SyncChunk`, `K = 10`), `torch.compile`-accelerated reactive sync (`CompiledSync`, `K = 4`), and async dual-stream PyTorch (`PyTorchAsync`, `SDPA` + per-stream lock).
+Evaluated on `1x RTX 4090` (`lerobot/pi05_libero_finetuned_v044`, 3.3B `BF16`) through [`robocurve/inspect-robots`](https://github.com/robocurve/inspect-robots) (`SELF_PACED` 20 Hz real-time control with simulator CPU physics decoupled from the logical robot clock, [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)) against three baselines: standard open-loop chunking (`SyncChunk`, `K = 10`), `torch.compile`-accelerated reactive sync (`CompiledSync`, `K = 4`), and async dual-stream PyTorch (`PyTorchAsync`, `SDPA` + per-stream lock).
 
 ### 4.1 Standard LIBERO (`12` Scenes across `libero_spatial`, `libero_object`, `libero_goal`)
 
 | Load | Policy | Success | Time-to-Success (Paired vs. Tempo) | Robot Stall | Goodput (`tasks/min`) | Latency (`P50 / P99`) |
 | :---: | :--- | :---: | :---: | :---: | :---: | :---: |
-| `N = 1` | `SyncChunk` (`K = 10`) | 91.7% (11/12) | 8.95 s (8.95 vs. 5.69 s, **1.57x**) | 41.7% | 5.47 | 341.3 / 380.7 ms |
-| `N = 1` | `CompiledSync` (`K = 4`) | 100.0% (12/12) | 8.73 s (8.73 vs. 5.78 s, **1.51x**) | 35.0% | 6.87 | 104.1 / 123.1 ms |
-| `N = 1` | `PyTorchAsync` (`SDPA`) | 16.7% (2/12) | 7.53 s (7.53 vs. 5.64 s, **1.33x**) | 3.4% | 0.80 | 598.8 / 781.5 ms |
-| `N = 1` | **Tempo (`Engine`)** | **100.0% (12/12)** | **5.78 s** | **1.1%** | **10.38** | **23.6 / 24.3 ms** |
-| `N = 2` | `SyncChunk` (`K = 10`) | 91.7% (11/12) | 9.10 s (9.10 vs. 5.72 s, **1.59x**) | 42.2% | 10.78 | 349.7 / 388.2 ms |
-| `N = 2` | `CompiledSync` (`K = 4`) | 100.0% (12/12) | 8.47 s (8.47 vs. 5.84 s, **1.45x**) | 35.9% | 14.16 | 109.8 / 123.0 ms |
-| `N = 2` | `PyTorchAsync` (`SDPA`) | 16.7% (2/12) | 8.74 s (8.74 vs. 5.63 s, **1.55x**) | 3.5% | 1.57 | 586.8 / 841.8 ms |
-| `N = 2` | **Tempo (`Engine`)** | **100.0% (12/12)** | **5.84 s** | **1.7%** | **20.55** | **39.3 / 46.0 ms** |
+| `N = 1` | `SyncChunk` (`K = 10`) | 91.7% (11/12) | 8.95 s (8.95 vs. 5.82 s, **1.54x**) | 40.4% | 5.51 | 328.7 / 375.5 ms |
+| `N = 1` | `CompiledSync` (`K = 4`) | 91.7% (11/12) | 8.18 s (8.18 vs. 5.79 s, **1.41x**) | 34.4% | 6.02 | 104.2 / 129.2 ms |
+| `N = 1` | `PyTorchAsync` (`SDPA`) | 66.7% (8/12) | 6.80 s (6.80 vs. 6.18 s, **1.10x**) | 4.2% | 4.44 | 524.9 / 674.5 ms |
+| `N = 1` | **Tempo (`Engine`)** | **100.0% (12/12)** | **5.89 s** | **1.0%** | **10.19** | **23.0 / 24.3 ms** |
+| `N = 2` | `SyncChunk` (`K = 10`) | 100.0% (12/12) | 9.02 s (9.02 vs. 5.74 s, **1.57x**) | 40.8% | 13.30 | 326.3 / 360.3 ms |
+| `N = 2` | `CompiledSync` (`K = 4`) | 100.0% (12/12) | 8.71 s (8.71 vs. 5.74 s, **1.52x**) | 35.4% | 13.78 | 107.6 / 117.4 ms |
+| `N = 2` | `PyTorchAsync` (`SDPA`) | 50.0% (6/12) | 5.43 s (5.43 vs. 5.44 s, 1.00x) | 4.4% | 6.36 | 489.6 / 627.0 ms |
+| `N = 2` | **Tempo (`Engine`)** | **100.0% (12/12)** | **5.74 s** | **1.7%** | **20.90** | **41.3 / 43.2 ms** |
 
 ### 4.2 Moving-Object [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`24` Scenes at `0.03 / 0.06 / 0.09 m/s`)
 
-| Load | Policy | Overall Success | `0.03 / 0.06 / 0.09 m/s` | Paired Time-to-Success | Goodput (`tasks/min`) |
-| :---: | :--- | :---: | :---: | :---: | :---: |
-| `N = 1` | `SyncChunk` (`K = 10`) | 54.2% (13/24) | 37.5% / 75.0% / 50.0% | 17.37 vs. **7.28 s** (**2.39x**) | 0.62 |
-| `N = 1` | `CompiledSync` (`K = 4`) | 41.7% (10/24) | 62.5% / 37.5% / 25.0% | 13.56 vs. **7.26 s** (**1.87x**) | 0.43 |
-| `N = 1` | `PyTorchAsync` (`SDPA`) | 12.5% (3/24) | 25.0% / 0.0% / 12.5% | 7.76 vs. **6.88 s** (**1.13x**) | 0.17 |
-| `N = 1` | **Tempo (`Engine`)** | 50.0% (12/24) | **62.5%** / 25.0% / **62.5%** | **11.57 s** mean (`0.2%` stall) | **0.84** |
-| `N = 2` | `SyncChunk` (`K = 10`) | 33.3% (8/24) | 37.5% / 37.5% / 25.0% | 19.79 vs. **11.22 s** (**1.76x**) | 0.65 |
-| `N = 2` | `CompiledSync` (`K = 4`) | 54.2% (13/24) | 75.0% / 50.0% / 37.5% | 13.99 vs. **9.80 s** (**1.43x**) | 1.25 |
-| `N = 2` | `PyTorchAsync` (`SDPA`) | 8.3% (2/24) | 12.5% / 0.0% / 12.5% | 9.60 vs. 11.61 s (1 scene) | 0.22 |
-| `N = 2` | **Tempo (`Engine`)** | 45.8% (11/24) | 50.0% / 25.0% / **62.5%** | **11.29 s** mean (`0.3%` stall) | **1.50** |
-
-Note: On `l2` (`0.06 m/s`), `LIBERO-Dynamic`'s multi-obstacle CPU MuJoCo contact substeps ran at `~360 ms/step` (`0.14x` real-time), causing wall-clock horizon clocks (`50 ms/step`) to advance faster than simulated physics; on real-time tiers (`l1 + l3`, `16` scenes), Tempo achieves **62.5% (10/16)** at `N = 1` (vs. 43.8% for both sync baselines) and **62.5% (5/8)** on the fastest `0.09 m/s` tier at both `N = 1` and `N = 2` (**2.35–4.04 tasks/min** goodput vs. **0.82–2.42** for sync).
+| Load | Policy | Overall Success | `0.03 / 0.06 / 0.09 m/s` | Time-to-Success (Paired vs. Tempo) | Robot Stall | Goodput (`tasks/min`) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| `N = 1` | `SyncChunk` (`K = 10`) | 41.7% (10/24) | 37.5% / 50.0% / 37.5% | 13.04 s (15.23 vs. 6.36 s, **2.39x**) | 39.7% | 1.39 |
+| `N = 1` | `CompiledSync` (`K = 4`) | 41.7% (10/24) | 37.5% / 37.5% / 50.0% | 12.20 s (11.07 vs. 6.09 s, **1.82x**) | 35.0% | 1.49 |
+| `N = 1` | `PyTorchAsync` (`SDPA`) | 12.5% (3/24) | 0.0% / 12.5% / 25.0% | 7.56 s (6.09 vs. 6.17 s, 0.99x) | 3.0% | 0.59 |
+| `N = 1` | **Tempo (`Engine`)** | **45.8% (11/24)** | **37.5% / 50.0% / 50.0%** | **6.49 s** | **0.7%** | **2.73** |
+| `N = 2` | `SyncChunk` (`K = 10`) | 50.0% (12/24) | 50.0% / 62.5% / 37.5% | 11.41 s (11.78 vs. 6.84 s, **1.72x**) | 41.0% | 3.59 |
+| `N = 2` | `CompiledSync` (`K = 4`) | 37.5% (9/24) | 62.5% / 37.5% / 12.5% | 10.74 s (10.93 vs. 6.73 s, **1.62x**) | 35.6% | 2.70 |
+| `N = 2` | `PyTorchAsync` (`SDPA`) | 20.8% (5/24) | 25.0% / 25.0% / 12.5% | 6.08 s (6.00 vs. 5.60 s, **1.07x**) | 4.2% | 2.09 |
+| `N = 2` | **Tempo (`Engine`)** | **54.2% (13/24)** | **62.5% / 62.5% / 37.5%** | **6.56 s** | **1.2%** | **6.79** |
 
 ## Reproduce
 

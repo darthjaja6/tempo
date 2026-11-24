@@ -1697,6 +1697,8 @@ class Engine:
         assert self._fast_spec is not None
         if not self._running:
             raise RuntimeError("Engine must be started before calling wait_ready()")
+        if sched.is_clock_paused():
+            raise RuntimeError("Cannot call wait_ready() while engine clock is paused")
         if fast_obs is None and not self._fast_spec.fast_obs_is_noise:
             raise ValueError(
                 "fast_obs is required in wait_ready(fast_obs) because this model's Fast stage "
@@ -1790,6 +1792,14 @@ class Engine:
 
     def now_ns(self) -> int:
         return self._require_compiled().now_ns()
+
+    def pause_clock(self) -> None:
+        """Pauses the engine's logical clock during slower-than-real-time simulator stepping."""
+        self._require_compiled().pause_clock()
+
+    def resume_clock(self) -> None:
+        """Resumes the engine's logical clock after a paused simulator step."""
+        self._require_compiled().resume_clock()
 
     def reset(self, q_init: Optional[torch.Tensor] = None) -> None:
         """Resets all stream trajectories, shared cache slots, and stats."""
