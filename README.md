@@ -76,7 +76,7 @@ Evaluated against a multi-stream PyTorch `SDPA` baseline ([full tables & reprodu
 | `lerobot/pi05_base` | `1x RTX 4090` (`Colocated`) | **1** | **23.90 ms** vs. 271.6 ms (**11.4x**) | 2 streams |
 | `lerobot/smolvla_base` | `1x RTX 4090` (`Colocated`) | **8** | **24.36 ms** vs. 136.1 ms (**5.6x**) | 12 streams |
 
-On real-time moving-object manipulation ([robocurve/inspect-robots](https://github.com/robocurve/inspect-robots) × [LIBERO-Dynamic](https://github.com/renshaojie233/LIBERO-Dynamic), `0.03–0.09 m/s`), Tempo reaches **50.0%** task success with `0` underruns vs. **33.3%** for synchronous chunking and **11.1%** for async PyTorch at `N = 2` concurrent streams ([details](./benchmarks/README.md#4-real-time-moving-object-manipulation-inspect-robots--libero-dynamic)).
+On real-time `20 Hz` manipulation (`1x RTX 4090`, `lerobot/pi05_libero_finetuned_v044` via [robocurve/inspect-robots](https://github.com/robocurve/inspect-robots)), Tempo cuts robot inference stall time from `35–42%` to **`<2%`**, completing standard LIBERO tasks **`1.45–1.59x` faster** (`5.78 s` vs. `8.73 s` for `torch.compile` sync and `8.95 s` for open-loop sync; **`20.55` vs. `10.78–14.16` tasks/min** at `N = 2`) and paired [LIBERO-Dynamic](https://github.com/renshaojie233/LIBERO-Dynamic) moving-object tasks **`1.43–2.39x` faster** than synchronous baselines, while reaching **`62.5%`** success at `0.09 m/s` vs. `25.0–50.0%` (`25.0–37.5%` at `N = 2`) ([details](./benchmarks/README.md#4-real-time-task-completion--dynamic-reaction-inspect-robots--libero)).
 
 ## License
 

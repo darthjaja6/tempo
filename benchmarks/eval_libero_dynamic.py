@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Real-time moving-object manipulation benchmark combining robocurve/inspect-robots with LIBERO-Dynamic.
+Real-time manipulation benchmark via robocurve/inspect-robots on standard LIBERO & LIBERO-Dynamic.
 
-Evaluates 3 `inspect_robots` Policy implementations head-to-head on identical 20 Hz wall-clock
-`LIBERO-Dynamic` moving-object episodes (0.03 / 0.06 / 0.09 m/s):
-  - `SyncChunkPolicy`: synchronous open-loop action chunking (`K=10`)
-  - `PyTorchAsyncPolicy`: eager PyTorch dual-stream `SDPA` + per-stream `RWLock` baseline
-  - `TempoPolicy`: `tempo.Engine` (sliced Slow VLM + lock-free paged cache + CUDA Graph Fast + C++ RTC)
+Measures how inference latency impacts both Task Completion Time (Time-to-Success, stall ratio,
+and Fleet Goodput in tasks/min/GPU) and Dynamic-Target Success Rate on identical pretrained VLA
+weights (`lerobot/pi05_libero_finetuned_v044`, 3.3B BF16) across 4 deployment strategies:
+  1. `SyncChunk (K=10)`   : Standard synchronous open-loop chunking (10 steps = 500 ms per chunk)
+  2. `CompiledSync (K=4)` : `torch.compile`-accelerated synchronous reactive chunking (4 steps = 200 ms)
+  3. `PyTorchAsync (SDPA)`: Asynchronous Python dual-stream (`SDPA` + per-stream lock, 10 Hz Slow / 5 Hz Fast)
+  4. `Tempo (Engine)`     : `tempo.Engine` (C++ scheduler + <2 ms VLM slicing + paged KV + CUDA Graph + RTC)
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
 
 import numpy as np
 import torch
+
 torch.set_num_threads(2)
 import torch.nn.functional as F
 from safetensors.torch import load_file
@@ -55,6 +58,7 @@ from tempo.models.hub import load_hf_tokenizer, resolve_checkpoint
 from tempo.models.pi05 import discretize_pi05_state
 
 import eval_dynamic_libero_style as legacy
+from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 from realtime_eval.runner import build_parser as build_dyn_parser
 from realtime_eval.runtime import RealtimeEpisode
@@ -122,8 +126,12 @@ def extract_libero_obs(raw_obs: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray,
     return img_main, img_wrist, state_8d
 
 
-class LiberoDynamicRealtimeEmbodiment(EmbodimentBase):
-    """Real-time 20 Hz wall-clock LIBERO-Dynamic MuJoCo embodiment for inspect-robots."""
+class LiberoRealtimeEmbodiment(EmbodimentBase):
+    """Real-time 20 Hz wall-clock LIBERO & LIBERO-Dynamic MuJoCo embodiment for inspect-robots.
+
+    Records exact per-episode wall-clock completion time, step count, blocking inference stall time,
+    and moving-target physical displacement.
+    """
 
     def __init__(self, items_by_id: Dict[str, Dict[str, Any]], dyn_args: argparse.Namespace) -> None:
         self._items_by_id = items_by_id
@@ -131,7 +139,7 @@ class LiberoDynamicRealtimeEmbodiment(EmbodimentBase):
         self._control_hz = float(dyn_args.control_freq)
         self._dt_s = 1.0 / self._control_hz
         self.info = EmbodimentInfo(
-            name="libero-dynamic-franka-20hz",
+            name="libero-realtime-franka-20hz",
             action_space=ACTION_SPACE,
             observation_space=OBS_SPACE,
             control_hz=self._control_hz,
@@ -141,15 +149,46 @@ class LiberoDynamicRealtimeEmbodiment(EmbodimentBase):
         )
         self._ep: Optional[RealtimeEpisode] = None
         self._env: Optional[OffScreenRenderEnv] = None
+        self._is_dynamic: bool = False
+        self._current_scene_meta: Dict[str, Any] = {}
         self._instruction: str = ""
+        self._ep_start_t: float = 0.0
+        self._last_step_end_t: float = 0.0
         self._obs_ready_t: float = 0.0
-        self._diag: Optional[Dict[str, Any]] = None
         self._step_count: int = 0
-        self.last_sync_stall_total_s: float = 0.0
-        self.last_max_target_disp_m: float = 0.0
+        self._ep_stall_s: float = 0.0
+        self._ep_max_disp_m: float = 0.0
+        self._ep_success: bool = False
+        self._ep_recorded: bool = True
         self._target_init_pos: Dict[str, np.ndarray] = {}
+        self.episode_records: List[Dict[str, Any]] = []
+
+    def clear_records(self) -> None:
+        self._finalize_episode_if_needed()
+        self.episode_records.clear()
+
+    def _finalize_episode_if_needed(self) -> None:
+        if self._ep_recorded or self._step_count == 0:
+            return
+        wall_s = max(0.0, self._last_step_end_t - self._ep_start_t)
+        self.episode_records.append(
+            {
+                "scene_id": str(self._current_scene_meta.get("scene_id", "")),
+                "suite": str(self._current_scene_meta.get("suite", "")),
+                "task_id": int(self._current_scene_meta.get("task_id", 0)),
+                "level": str(self._current_scene_meta.get("level", "static")),
+                "init_idx": int(self._current_scene_meta.get("init_idx", 0)),
+                "success": bool(self._ep_success),
+                "steps": int(self._step_count),
+                "wall_time_s": round(wall_s, 4),
+                "stall_time_s": round(self._ep_stall_s, 4),
+                "max_target_disp_m": round(self._ep_max_disp_m, 4),
+            }
+        )
+        self._ep_recorded = True
 
     def _close_env(self) -> None:
+        self._finalize_episode_if_needed()
         if self._env is not None:
             try:
                 self._env.close()
@@ -173,41 +212,74 @@ class LiberoDynamicRealtimeEmbodiment(EmbodimentBase):
                 self._target_init_pos[name] = pos
             else:
                 disp = float(np.linalg.norm(pos[:2] - self._target_init_pos[name][:2]))
-                if disp < 1.5 and disp > self.last_max_target_disp_m:
-                    self.last_max_target_disp_m = disp
+                if disp < 1.5 and disp > self._ep_max_disp_m:
+                    self._ep_max_disp_m = disp
 
     def reset(self, scene: Scene, *, seed: int | None = None) -> Observation:
         self._close_env()
         gc.collect()
-        item_id = str(scene.metadata["item_id"])
-        item = self._items_by_id[item_id]
-        ep = RealtimeEpisode(item, self._dyn_args, worker_slot=0)
-        ep._configure_env_selection()
-        suite, task, bddl = legacy.task_bddl(item["suite"], item["task_id"])
-        init_states = suite.get_task_init_states(item["task_id"])
+        meta = dict(scene.metadata)
+        meta["scene_id"] = scene.id
+        self._current_scene_meta = meta
+        self._is_dynamic = bool(meta.get("dynamic", True))
 
-        env = OffScreenRenderEnv(
-            bddl_file_name=str(bddl),
-            camera_heights=256,
-            camera_widths=256,
-            control_freq=int(self._dyn_args.control_freq),
-        )
-        eff_seed = int(self._dyn_args.seed if seed is None else seed)
-        env.seed(eff_seed)
-        init_idx = int(self._dyn_args.init_state_id) % len(init_states)
-        raw_obs, *_ = ep._setup_world(env, init_states[init_idx])
+        if self._is_dynamic:
+            item_id = str(meta["item_id"])
+            item = self._items_by_id[item_id]
+            ep = RealtimeEpisode(item, self._dyn_args, worker_slot=0)
+            ep._configure_env_selection()
+            suite, task, bddl = legacy.task_bddl(item["suite"], item["task_id"])
+            init_states = suite.get_task_init_states(item["task_id"])
 
-        self._ep = ep
+            env = OffScreenRenderEnv(
+                bddl_file_name=str(bddl),
+                camera_heights=256,
+                camera_widths=256,
+                control_freq=int(self._dyn_args.control_freq),
+            )
+            eff_seed = int(self._dyn_args.seed if seed is None else seed)
+            env.seed(eff_seed)
+            init_idx = int(meta.get("init_idx", self._dyn_args.init_state_id)) % len(init_states)
+            raw_obs, *_ = ep._setup_world(env, init_states[init_idx])
+            self._ep = ep
+        else:
+            suite_name = str(meta["suite"])
+            task_id = int(meta["task_id"])
+            init_idx_raw = int(meta["init_idx"])
+            suite, task, _ = legacy.task_bddl(suite_name, task_id)
+            init_states = suite.get_task_init_states(task_id)
+            bddl_path = os.path.join(get_libero_path("bddl_files"), task.problem_folder, task.bddl_file)
+            env = OffScreenRenderEnv(
+                bddl_file_name=bddl_path,
+                camera_heights=256,
+                camera_widths=256,
+                control_freq=int(self._dyn_args.control_freq),
+            )
+            eff_seed = int(0 if seed is None else seed)
+            env.seed(eff_seed)
+            env.reset()
+            raw_obs = env.set_init_state(init_states[init_idx_raw % len(init_states)])
+            open_grip = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0]
+            for _ in range(10):
+                raw_obs, _, _, _ = env.step(open_grip)
+            self._ep = None
+
         self._env = env
         self._instruction = task.language
         self._step_count = 0
-        self.last_sync_stall_total_s = 0.0
-        self.last_max_target_disp_m = 0.0
+        self._ep_stall_s = 0.0
+        self._ep_max_disp_m = 0.0
+        self._ep_success = False
+        self._ep_recorded = False
         self._target_init_pos.clear()
-        self._measure_target_disp()
+        if self._is_dynamic:
+            self._measure_target_disp()
 
         img_main, img_wrist, state_8d = extract_libero_obs(raw_obs)
-        self._obs_ready_t = time.perf_counter()
+        now = time.perf_counter()
+        self._ep_start_t = now
+        self._last_step_end_t = now
+        self._obs_ready_t = now
         return Observation(
             images={"agentview": img_main, "wrist": img_wrist},
             state={"eef_state": state_8d},
@@ -216,37 +288,52 @@ class LiberoDynamicRealtimeEmbodiment(EmbodimentBase):
         )
 
     def step(self, action: Action) -> StepResult:
-        assert self._ep is not None and self._env is not None
+        assert self._env is not None
         t_enter = time.perf_counter()
         policy_wait_s = t_enter - self._obs_ready_t
 
-        # Symmetric wall-clock physics rule:
-        # 1. If policy inference exceeded one 50ms control period (blocking policy stall),
-        #    advance continuous MuJoCo physics with robot joints held for the stall duration.
-        # 2. Otherwise pace the control tick to 1.0x real-time 20 Hz so background GPU threads
-        #    compute against real advancing wall-clock time.
-        if policy_wait_s > self._dt_s + 0.004:
-            stall_s = policy_wait_s - self._dt_s
-            self._ep._apply_sync_latency(self._env, stall_s)
-            self.last_sync_stall_total_s += stall_s
+        # Symmetric real-time wall-clock rule:
+        # 1. If policy inference blocked beyond the non-blocking control overhead (>15 ms),
+        #    the robot joints stood frozen for `policy_wait_s` before this action could start;
+        #    on dynamic scenes, advance MuJoCo world physics for that exact stall duration,
+        #    and then pace the 50 ms physical execution of `action`.
+        # 2. If policy.act() returned non-blockingly (<=15 ms), overlap it inside the 50 ms
+        #    control period so total step period is paced to 1.0x real-time (50 ms = 20 Hz).
+        is_blocking_stall = policy_wait_s > 0.015
+        if is_blocking_stall:
+            self._ep_stall_s += policy_wait_s
+            if self._is_dynamic and self._ep is not None:
+                self._ep._apply_sync_latency(self._env, policy_wait_s)
 
+        t_exec_start = time.perf_counter()
         act_np = np.clip(np.asarray(action.data, dtype=np.float32), -1.0, 1.0)
-        raw_obs, reward, done, _info = self._ep._step_env(self._env, act_np)
+        if self._is_dynamic and self._ep is not None:
+            raw_obs, reward, done, _info = self._ep._step_env(self._env, act_np)
+        else:
+            raw_obs, reward, done, _info = self._env.step(act_np.tolist())
+
         self._step_count += 1
-        if self._step_count % 10 == 0:
+        if self._is_dynamic and self._step_count % 10 == 0:
             self._measure_target_disp()
 
         is_success = bool(self._env.check_success())
         terminated = bool(is_success or done)
         term_reason = "success" if is_success else ("done" if done else None)
+        if is_success:
+            self._ep_success = True
 
         img_main, img_wrist, state_8d = extract_libero_obs(raw_obs)
-        if policy_wait_s <= self._dt_s + 0.004:
-            rem = self._dt_s - (time.perf_counter() - self._obs_ready_t)
-            if rem > 0.0:
-                time.sleep(rem)
+        anchor_t = t_exec_start if is_blocking_stall else self._obs_ready_t
+        rem = self._dt_s - (time.perf_counter() - anchor_t)
+        if rem > 0.0:
+            time.sleep(rem)
 
-        self._obs_ready_t = time.perf_counter()
+        now_end = time.perf_counter()
+        self._last_step_end_t = now_end
+        if terminated:
+            self._finalize_episode_if_needed()
+
+        self._obs_ready_t = now_end
         return StepResult(
             observation=Observation(
                 images={"agentview": img_main, "wrist": img_wrist},
@@ -262,36 +349,21 @@ class LiberoDynamicRealtimeEmbodiment(EmbodimentBase):
 
 
 class ModelPreprocHelper:
-    """Shared camera/state normalization and action unnormalization for SmolVLA or Pi0.5."""
+    """Shared camera/state normalization and action unnormalization for Pi0.5."""
 
-    def __init__(self, arch: str, ckpt_dir: pathlib.Path) -> None:
-        self.arch = arch
+    def __init__(self, ckpt_dir: pathlib.Path) -> None:
         self.ckpt_dir = ckpt_dir
         self._aux_stream = torch.cuda.Stream(device="cuda:0")
-        if arch == "smolvla":
-            self.img_size = 512
-            self.stats = load_mean_std_stats(
-                ckpt_dir,
-                "policy_preprocessor_step_5_normalizer_processor.safetensors",
-                "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
-            )
-            self.tok = load_hf_tokenizer("HuggingFaceTB/SmolVLM2-500M-Video-Instruct", checkpoint_dir=ckpt_dir)
-        elif arch == "pi05":
-            self.img_size = 224
-            self.stats = load_mean_std_stats(
-                ckpt_dir,
-                "policy_preprocessor_step_2_normalizer_processor.safetensors",
-                "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
-            )
-            self.tok = load_hf_tokenizer("mlx-community/paligemma-3b-mix-224-8bit", checkpoint_dir=ckpt_dir)
-        else:
-            raise ValueError(f"Unsupported arch {arch}")
+        self.img_size = 224
+        self.stats = load_mean_std_stats(
+            ckpt_dir,
+            "policy_preprocessor_step_2_normalizer_processor.safetensors",
+            "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
+        )
+        self.tok = load_hf_tokenizer("mlx-community/paligemma-3b-mix-224-8bit", checkpoint_dir=ckpt_dir)
 
     def prompt_len_for(self, instruction: str, raw_state_8d: np.ndarray) -> int:
         norm_st = (torch.from_numpy(raw_state_8d) - self.stats["state_mean"]) / (self.stats["state_std"] + 1e-8)
-        if self.arch == "smolvla":
-            p = instruction if instruction.endswith("\n") else f"{instruction}\n"
-            return len(self.tok.encode(p).ids)
         cleaned = instruction.strip().replace("_", " ").replace("\n", " ")
         p = f"Task: {cleaned}, State: {discretize_pi05_state(norm_st, 32)};\nAction: "
         return len(self.tok.encode(p).ids) + 4
@@ -306,10 +378,7 @@ class ModelPreprocHelper:
 
     def update_slow_stage(self, slow_stage: Any, instruction: str, norm_st: torch.Tensor) -> None:
         with torch.cuda.device("cuda:0"), torch.cuda.stream(self._aux_stream):
-            if self.arch == "smolvla":
-                slow_stage.set_state(norm_st)
-            else:
-                slow_stage.set_prompt(instruction, state=norm_st)
+            slow_stage.set_prompt(instruction, state=norm_st)
         self._aux_stream.synchronize()
 
     def unnormalize_action(self, norm_act: torch.Tensor) -> np.ndarray:
@@ -318,7 +387,7 @@ class ModelPreprocHelper:
 
 
 class SyncChunkPolicy(PolicyBase):
-    """Standard synchronous open-loop ActionChunk policy (K steps per inference)."""
+    """Synchronous ActionChunk policy (optional torch.compile acceleration on FastHead)."""
 
     def __init__(
         self,
@@ -327,23 +396,26 @@ class SyncChunkPolicy(PolicyBase):
         prompt_len: int,
         chunk_horizon: int = 10,
         num_streams: int = 1,
+        compile_fast: bool = False,
     ) -> None:
         self.helper = helper
         self.chunk_horizon = chunk_horizon
         self.num_streams = num_streams
+        self.compile_fast = compile_fast
         self.dep = ModelRegistry.build_for_engine(
             str(helper.ckpt_dir),
             slow_devices=[[0]],
             fast_devices=[0],
             fast_precision="bf16",
-            prompt="pick up the object\n" if helper.arch == "smolvla" else None,
             prompt_len=prompt_len,
         )
         self.slow_stage = self.dep.slow_replicas[0][0]
-        self.fast_head = self.dep.fast_shards[0]
+        raw_fast = self.dep.fast_shards[0]
+        self.fast_head = torch.compile(raw_fast, dynamic=False) if compile_fast else raw_fast
         self.dev = torch.device("cuda:0")
+        tag = "compiled-sync" if compile_fast else "sync-chunk"
         self.info = PolicyInfo(
-            name=f"sync-chunk-k{chunk_horizon}-n{num_streams}",
+            name=f"{tag}-k{chunk_horizon}-n{num_streams}",
             action_space=ACTION_SPACE,
             observation_space=OBS_SPACE,
             control_hz=20.0,
@@ -352,17 +424,35 @@ class SyncChunkPolicy(PolicyBase):
         self.config = PolicyConfig(action_horizon=chunk_horizon)
         self.infer_latencies_ms: List[float] = []
 
+        # Warmup GPU kernels / torch.compile before episodes start
+        with torch.no_grad():
+            B = self.num_streams
+            w_obs = torch.zeros((B, *self.dep.slow_obs_shape), dtype=torch.bfloat16, device=self.dev)
+            ctx = EagerCaptureContext(self.dep.channel, self.dev)
+            self.slow_stage(w_obs, ctx)
+            ks = [ctx.kv_by_layer[i][0] for i in range(self.dep.channel.layers)]
+            vs = [ctx.kv_by_layer[i][1] for i in range(self.dep.channel.layers)]
+            view = EagerDenseStateView(
+                self.dep.channel,
+                batch_ks=ks,
+                batch_vs=vs,
+                prefix_valid=torch.zeros((B,), dtype=torch.bool, device=self.dev),
+            )
+            noise = torch.randn((B, *self.dep.fast_obs_shape), dtype=torch.bfloat16, device=self.dev)
+            pref = torch.zeros((B, 2, self.dep.action_dim), dtype=torch.bfloat16, device=self.dev)
+            for _ in range(2):
+                self.fast_head(noise, view, pref)
+            torch.cuda.synchronize(self.dev)
+
     def close(self) -> None:
         del self.slow_stage, self.fast_head, self.dep
+        if self.compile_fast:
+            torch._dynamo.reset()
         gc.collect()
         torch.cuda.empty_cache()
 
     def reset(self, scene: Scene) -> None:
-        if self.helper.arch == "smolvla":
-            p = scene.instruction if scene.instruction.endswith("\n") else f"{scene.instruction}\n"
-            with torch.cuda.device("cuda:0"), torch.cuda.stream(self.helper._aux_stream):
-                self.slow_stage.set_prompt(p)
-            self.helper._aux_stream.synchronize()
+        return None
 
     @torch.no_grad()
     def act(self, observation: Observation) -> ActionChunk:
@@ -370,7 +460,6 @@ class SyncChunkPolicy(PolicyBase):
         cams, norm_st, instr = self.helper.prepare_inputs(observation)
         self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
 
-        # Reflect N concurrent robot streams served per batch on 1 GPU
         B = self.num_streams
         obs_b = (cams.to(self.dev, dtype=torch.bfloat16) / 255.0).unsqueeze(0).expand(B, -1, -1, -1, -1).contiguous()
         ctx = EagerCaptureContext(self.dep.channel, self.dev)
@@ -399,7 +488,7 @@ class SyncChunkPolicy(PolicyBase):
 
 
 class PyTorchAsyncPolicy(PolicyBase):
-    """Asynchronous PyTorch Dual-Stream (SDPA + RWLock) reactive policy (H=1)."""
+    """Asynchronous PyTorch Dual-Stream (SDPA + RWLock) policy (10 Hz Slow VLM, 5 Hz Fast chunk)."""
 
     def __init__(
         self,
@@ -407,17 +496,18 @@ class PyTorchAsyncPolicy(PolicyBase):
         *,
         prompt_len: int,
         num_streams: int = 1,
-        replan_every_steps: int = 2,
+        slow_every_steps: int = 2,
+        fast_every_steps: int = 4,
     ) -> None:
         self.helper = helper
         self.num_streams = num_streams
-        self.replan_every_steps = replan_every_steps
+        self.slow_every_steps = slow_every_steps
+        self.fast_every_steps = fast_every_steps
         self.dep = ModelRegistry.build_for_engine(
             str(helper.ckpt_dir),
             slow_devices=[[0]],
             fast_devices=[0],
             fast_precision="bf16",
-            prompt="pick up the object\n" if helper.arch == "smolvla" else None,
             prompt_len=prompt_len,
         )
         self.slow_stage = self.dep.slow_replicas[0][0]
@@ -464,6 +554,7 @@ class PyTorchAsyncPolicy(PolicyBase):
         self._stop_bg()
         with self.base.stats_lock:
             self.fast_ttac_ms.extend(self.base.fast_ttac_ms)
+            self.base.fast_ttac_ms.clear()
         self.base.stop()
         del self.base, self.slow_stage, self.dep
         gc.collect()
@@ -475,12 +566,13 @@ class PyTorchAsyncPolicy(PolicyBase):
             bg_s = torch.rand(self.dep.slow_obs_shape, dtype=torch.bfloat16, device=self.dev)
             bg_f = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
         sib_stream.synchronize()
-        tick = 0
+        tick = 1
         while self._bg_running:
             now_ns = time.monotonic_ns()
             for s in range(1, self.num_streams):
-                if tick % self.replan_every_steps == 0:
+                if tick % self.slow_every_steps == 1:
                     self.base.push_slow(bg_s, stream_id=s, t_obs_ns=now_ns)
+                if tick % self.fast_every_steps == 0:
                     self.base.push_fast(bg_f, stream_id=s, t_obs_ns=now_ns)
             tick += 1
             time.sleep(0.050)
@@ -501,11 +593,6 @@ class PyTorchAsyncPolicy(PolicyBase):
             self.base.sample_streams[f].synchronize()
         with self.base.stats_lock:
             self.base.active_valid = [False for _ in range(self.num_streams)]
-        if self.helper.arch == "smolvla":
-            p = scene.instruction if scene.instruction.endswith("\n") else f"{scene.instruction}\n"
-            with torch.cuda.device("cuda:0"), torch.cuda.stream(self.helper._aux_stream):
-                self.slow_stage.set_prompt(p)
-            self.helper._aux_stream.synchronize()
         self._step_idx = 0
 
     def act(self, observation: Observation) -> ActionChunk:
@@ -550,14 +637,17 @@ class PyTorchAsyncPolicy(PolicyBase):
                 self._bg_thread = threading.Thread(target=self._sibling_traffic_loop, daemon=True)
                 self._bg_thread.start()
         else:
-            if self._step_idx % self.replan_every_steps == 0:
+            now_ns = time.monotonic_ns()
+            if self._step_idx % self.slow_every_steps == 1:
                 self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
                 with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
                     obs_bf16 = cams.to(self.dev, dtype=torch.bfloat16) / 255.0
+                self._fg_stream.synchronize()
+                self.base.push_slow(obs_bf16, stream_id=0, t_obs_ns=now_ns)
+            if self._step_idx % self.fast_every_steps == 0:
+                with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
                     noise = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
                 self._fg_stream.synchronize()
-                now_ns = time.monotonic_ns()
-                self.base.push_slow(obs_bf16, stream_id=0, t_obs_ns=now_ns)
                 self.base.push_fast(noise, stream_id=0, t_obs_ns=now_ns)
             act_t, _fa, _sa, u = self.base.sample_actions(time.monotonic_ns())
             self.underruns += int(u)
@@ -571,7 +661,7 @@ class PyTorchAsyncPolicy(PolicyBase):
 
 
 class TempoPolicy(PolicyBase):
-    """Tempo Engine reactive policy (H=1): sliced VLM + lock-free cache + CUDA Graph Fast + C++ RTC."""
+    """Tempo Engine reactive policy: sliced VLM (10 Hz) + lock-free cache + CUDA Graph Fast (5 Hz) + RTC."""
 
     def __init__(
         self,
@@ -579,22 +669,23 @@ class TempoPolicy(PolicyBase):
         *,
         prompt_len: int,
         num_streams: int = 1,
-        replan_every_steps: int = 2,
+        slow_every_steps: int = 2,
+        fast_every_steps: int = 4,
     ) -> None:
         self.helper = helper
         self.num_streams = num_streams
-        self.replan_every_steps = replan_every_steps
+        self.slow_every_steps = slow_every_steps
+        self.fast_every_steps = fast_every_steps
         self.engine = Engine(
             str(helper.ckpt_dir),
             num_streams=num_streams,
             slow_devices=[0],
             fast_devices=[0],
-            slow_rate_hz=10.0,
-            fast_rate_hz=10.0,
+            slow_rate_hz=20.0 / float(slow_every_steps),
+            fast_rate_hz=20.0 / float(fast_every_steps),
             deadline_ms=45.0,
             step_dt_ms=50.0,
             fast_precision="bf16",
-            prompt="pick up the object\n" if helper.arch == "smolvla" else None,
             model_kwargs={"prompt_len": prompt_len},
         )
         assert self.engine.deployment is not None
@@ -632,11 +723,12 @@ class TempoPolicy(PolicyBase):
         with torch.cuda.device("cuda:0"), torch.cuda.stream(sib_stream):
             bg_s = torch.randint(0, 256, self.engine.slow_obs_shape, dtype=torch.uint8, device="cuda:0")
         sib_stream.synchronize()
-        tick = 0
+        tick = 1
         while self._bg_running:
             for s in range(1, self.num_streams):
-                if tick % self.replan_every_steps == 0:
+                if tick % self.slow_every_steps == 1:
                     self.engine.push_slow(bg_s, stream_id=s)
+                if tick % self.fast_every_steps == 0:
                     self.engine.push_fast(stream_id=s)
             tick += 1
             time.sleep(0.050)
@@ -645,11 +737,6 @@ class TempoPolicy(PolicyBase):
         self._stop_bg()
         self.fast_ttac_ms.extend(self.engine.telemetry().fast_ttac_ms)
         self.engine.reset()
-        if self.helper.arch == "smolvla":
-            p = scene.instruction if scene.instruction.endswith("\n") else f"{scene.instruction}\n"
-            with torch.cuda.device("cuda:0"), torch.cuda.stream(self.helper._aux_stream):
-                self.slow_stage.set_prompt(p)
-            self.helper._aux_stream.synchronize()
         self._step_idx = 0
 
     def act(self, observation: Observation) -> ActionChunk:
@@ -668,9 +755,10 @@ class TempoPolicy(PolicyBase):
                 self._bg_thread = threading.Thread(target=self._sibling_traffic_loop, daemon=True)
                 self._bg_thread.start()
         else:
-            if self._step_idx % self.replan_every_steps == 0:
+            if self._step_idx % self.slow_every_steps == 1:
                 self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
                 self.engine.push_slow(cams)
+            if self._step_idx % self.fast_every_steps == 0:
                 self.engine.push_fast()
             actions, _fa, _sa, u = self.engine.sample_actions(cpu=True)
             self.underruns += int(u)
@@ -683,13 +771,15 @@ class TempoPolicy(PolicyBase):
         return ActionChunk(actions=[Action(data=act)], control_hz=20.0, inference_latency_s=lat_s)
 
 
-def build_dynamic_scenes(
+def build_static_and_dynamic_scenes(
     dyn_repo: pathlib.Path,
     output_dir: pathlib.Path,
     levels: Sequence[str],
-    traj_indices: Sequence[int],
-    selected_tasks: Sequence[Tuple[str, int]],
-) -> Tuple[argparse.Namespace, Dict[str, Dict[str, Any]], Dict[str, List[Scene]]]:
+    static_tasks: Sequence[Tuple[str, int]],
+    static_inits: Sequence[int],
+    dyn_tasks: Sequence[Tuple[str, int]],
+    dyn_trajs: Sequence[int],
+) -> Tuple[argparse.Namespace, Dict[str, Dict[str, Any]], List[Scene], Dict[str, List[Scene]]]:
     parser = build_dyn_parser()
     argv = [
         "--config-dir",
@@ -699,7 +789,7 @@ def build_dynamic_scenes(
         "--levels",
         *levels,
         "--traj-indices",
-        *[str(i) for i in traj_indices],
+        *[str(i) for i in dyn_trajs],
         "--reviewed-old-physics",
         "--keep-static-support-contact",
         "--static-support-clearance-m",
@@ -709,7 +799,6 @@ def build_dynamic_scenes(
         "--no-save-step-trace",
         "--stop-on-success",
     ]
-    # Check config dir location inside LIBERO-Dynamic
     cand_dirs = [
         dyn_repo / "libero" / "libero" / "dynamic_configs",
         dyn_repo / "libero" / "libero" / "configs",
@@ -739,101 +828,152 @@ def build_dynamic_scenes(
         config_path_by_level=config_path_by_level,
     )
 
-    wanted = set(selected_tasks)
+    static_scenes: List[Scene] = []
+    for suite_name, task_id in static_tasks:
+        _suite_obj, task_obj, _ = legacy.task_bddl(suite_name, task_id)
+        for init_idx in static_inits:
+            sid = f"static__{suite_name}__t{task_id}__i{init_idx}"
+            static_scenes.append(
+                Scene(
+                    id=sid,
+                    instruction=task_obj.language,
+                    init_seed=init_idx,
+                    metadata={
+                        "dynamic": False,
+                        "level": "static",
+                        "suite": suite_name,
+                        "task_id": task_id,
+                        "init_idx": init_idx,
+                    },
+                )
+            )
+
+    wanted_dyn = set(dyn_tasks)
     items_by_id: Dict[str, Dict[str, Any]] = {}
-    scenes_by_level: Dict[str, List[Scene]] = {lvl: [] for lvl in levels}
-    seen_per_level_task_traj: set[Tuple[str, str, int, int]] = set()
+    dyn_scenes_by_level: Dict[str, List[Scene]] = {lvl: [] for lvl in levels}
+    seen: set[Tuple[str, str, int, int]] = set()
 
     for item in all_items:
         key = (str(item["suite"]), int(item["task_id"]))
-        if key not in wanted:
+        if key not in wanted_dyn:
             continue
         lvl = str(item["level"])
         t_idx = int(item["traj_index"])
         dedup_k = (lvl, key[0], key[1], t_idx)
-        if dedup_k in seen_per_level_task_traj:
+        if dedup_k in seen:
             continue
-        seen_per_level_task_traj.add(dedup_k)
+        seen.add(dedup_k)
 
-        suite_obj, task_obj, _ = legacy.task_bddl(key[0], key[1])
-        del suite_obj
+        _suite_obj, task_obj, _ = legacy.task_bddl(key[0], key[1])
         iid = str(item["item_id"])
         items_by_id[iid] = item
-        scenes_by_level[lvl].append(
+        dyn_scenes_by_level[lvl].append(
             Scene(
                 id=iid,
                 instruction=task_obj.language,
-                init_seed=0,
+                init_seed=t_idx,
                 metadata={
+                    "dynamic": True,
                     "item_id": iid,
                     "level": lvl,
                     "suite": key[0],
                     "task_id": key[1],
-                    "traj_index": t_idx,
+                    "init_idx": t_idx,
                 },
             )
         )
-    return dyn_args, items_by_id, scenes_by_level
+
+    return dyn_args, items_by_id, static_scenes, dyn_scenes_by_level
 
 
-def evaluate_policy_across_levels(
+def summarize_records(
+    records: List[Dict[str, Any]],
+    num_streams: int,
+) -> Dict[str, Any]:
+    total_ep = len(records)
+    succ_recs = [r for r in records if r["success"]]
+    total_succ = len(succ_recs)
+    total_wall_s = sum(float(r["wall_time_s"]) for r in records)
+    total_stall_s = sum(float(r["stall_time_s"]) for r in records)
+    mean_wall_all_s = total_wall_s / max(1, total_ep)
+    mean_succ_time_s = (
+        sum(float(r["wall_time_s"]) for r in succ_recs) / len(succ_recs) if succ_recs else None
+    )
+    mean_succ_steps = (
+        sum(int(r["steps"]) for r in succ_recs) / len(succ_recs) if succ_recs else None
+    )
+    stall_pct = 100.0 * total_stall_s / max(1e-6, total_wall_s)
+    fleet_goodput_tasks_per_min = num_streams * (total_succ / max(1e-6, total_wall_s / 60.0))
+
+    return {
+        "episodes": total_ep,
+        "successes": total_succ,
+        "success_rate_pct": round(100.0 * total_succ / max(1, total_ep), 1),
+        "mean_time_to_success_s": round(mean_succ_time_s, 2) if mean_succ_time_s is not None else None,
+        "mean_steps_to_success": round(mean_succ_steps, 1) if mean_succ_steps is not None else None,
+        "mean_episode_wall_s": round(mean_wall_all_s, 2),
+        "total_wall_s": round(total_wall_s, 2),
+        "total_stall_s": round(total_stall_s, 2),
+        "robot_stall_pct": round(stall_pct, 1),
+        "fleet_goodput_tasks_per_min": round(fleet_goodput_tasks_per_min, 2),
+        "max_target_disp_m": round(max((float(r["max_target_disp_m"]) for r in records), default=0.0), 4),
+    }
+
+
+def evaluate_policy_suite(
     policy_factory,
     policy_label: str,
-    embodiment: LiberoDynamicRealtimeEmbodiment,
-    scenes_by_level: Dict[str, List[Scene]],
+    num_streams: int,
+    embodiment: LiberoRealtimeEmbodiment,
+    suite_tag: str,
+    groups: Dict[str, List[Scene]],
     max_steps: int,
+    log_dir: pathlib.Path,
 ) -> Dict[str, Any]:
     policy = policy_factory()
-    level_speed_mps = {"l1": 0.03, "l2": 0.06, "l3": 0.09}
-    per_level: Dict[str, Any] = {}
-    total_succ = 0
-    total_ep = 0
-    max_disp = 0.0
-    total_stall_s = 0.0
+    embodiment.clear_records()
+    level_speed_mps = {"static": 0.0, "l1": 0.03, "l2": 0.06, "l3": 0.09}
 
     try:
-        for lvl, scenes in scenes_by_level.items():
+        for grp_name, scenes in groups.items():
             if not scenes:
                 continue
             task = Task(
-                name=f"libero-dynamic-{lvl}",
+                name=f"{suite_tag}-{grp_name}",
                 scenes=scenes,
                 scorer="success_at_end",
                 max_steps=max_steps,
             )
-            logs = inspect_eval(
+            inspect_eval(
                 task,
                 policy=policy,
                 embodiment=embodiment,
-                log_dir="/tmp/inspect_logs",
+                log_dir=str(log_dir),
                 fail_on_error=True,
                 store_frames=False,
                 store_records=False,
             )
-            log = logs[0]
-            lvl_succ = sum(
-                1
-                for sr in log.samples
-                if (sr.reduced.get("success_at_end") or 0.0) >= 0.5
-            )
-            lvl_n = len(scenes)
-            total_succ += lvl_succ
-            total_ep += lvl_n
-            max_disp = max(max_disp, embodiment.last_max_target_disp_m)
-            total_stall_s += embodiment.last_sync_stall_total_s
-            sr_pct = round(100.0 * lvl_succ / max(1, lvl_n), 1)
-            per_level[lvl] = {
-                "speed_mps": level_speed_mps.get(lvl, 0.0),
-                "episodes": lvl_n,
-                "successes": lvl_succ,
-                "success_rate_pct": sr_pct,
-            }
+        embodiment._finalize_episode_if_needed()
+        all_recs = list(embodiment.episode_records)
+
+        per_group: Dict[str, Any] = {}
+        for grp_name in groups:
+            g_recs = [r for r in all_recs if r["level"] == grp_name]
+            if not g_recs:
+                continue
+            g_sum = summarize_records(g_recs, num_streams)
+            g_sum["speed_mps"] = level_speed_mps.get(grp_name, 0.0)
+            per_group[grp_name] = g_sum
             print(
-                f"  [{policy_label}] level={lvl} ({level_speed_mps.get(lvl)} m/s): "
-                f"{lvl_succ}/{lvl_n} ({sr_pct:.1f}%) | max_target_disp={embodiment.last_max_target_disp_m:.3f}m",
+                f"  [{policy_label}] {suite_tag}/{grp_name}: "
+                f"{g_sum['successes']}/{g_sum['episodes']} ({g_sum['success_rate_pct']:.1f}%) | "
+                f"time_to_succ={g_sum['mean_time_to_success_s']}s | "
+                f"stall={g_sum['robot_stall_pct']:.1f}% | "
+                f"goodput={g_sum['fleet_goodput_tasks_per_min']:.2f} tasks/min",
                 flush=True,
             )
 
+        overall = summarize_records(all_recs, num_streams)
         if hasattr(policy, "engine"):
             policy.fast_ttac_ms.extend(policy.engine.telemetry().fast_ttac_ms)
         elif hasattr(policy, "base") and policy.base is not None:
@@ -841,147 +981,214 @@ def evaluate_policy_across_levels(
                 policy.fast_ttac_ms.extend(policy.base.fast_ttac_ms)
                 policy.base.fast_ttac_ms.clear()
 
-        summary: Dict[str, Any] = {
+        result: Dict[str, Any] = {
+            "suite": suite_tag,
             "policy": policy_label,
-            "total_episodes": total_ep,
-            "total_successes": total_succ,
-            "overall_success_rate_pct": round(100.0 * total_succ / max(1, total_ep), 1),
-            "per_level": per_level,
-            "max_target_disp_m": round(max_disp, 4),
+            "model": "lerobot/pi05_libero_finetuned_v044",
+            "num_streams": num_streams,
+            **overall,
+            "per_group": per_group,
+            "episodes_detail": all_recs,
         }
         if hasattr(policy, "infer_latencies_ms") and policy.infer_latencies_ms:
             arr = np.asarray(policy.infer_latencies_ms, dtype=np.float64)
-            summary["chunk_infer_p50_ms"] = round(float(np.percentile(arr, 50)), 2)
-            summary["chunk_infer_p99_ms"] = round(float(np.percentile(arr, 99)), 2)
+            result["chunk_infer_p50_ms"] = round(float(np.percentile(arr, 50)), 2)
+            result["chunk_infer_p99_ms"] = round(float(np.percentile(arr, 99)), 2)
         if hasattr(policy, "fast_ttac_ms") and policy.fast_ttac_ms:
             arr = np.asarray(policy.fast_ttac_ms, dtype=np.float64)
-            summary["fast_ttac_p50_ms"] = round(float(np.percentile(arr, 50)), 2)
-            summary["fast_ttac_p99_ms"] = round(float(np.percentile(arr, 99)), 2)
+            result["fast_ttac_p50_ms"] = round(float(np.percentile(arr, 50)), 2)
+            result["fast_ttac_p99_ms"] = round(float(np.percentile(arr, 99)), 2)
         if hasattr(policy, "act_latencies_us") and policy.act_latencies_us:
             arr = np.asarray(policy.act_latencies_us, dtype=np.float64)
-            summary["act_p50_us"] = round(float(np.percentile(arr, 50)), 2)
+            result["act_p50_us"] = round(float(np.percentile(arr, 50)), 2)
         if hasattr(policy, "underruns"):
-            summary["underruns"] = int(policy.underruns)
-        return summary
+            result["underruns"] = int(policy.underruns)
+        return result
     finally:
         policy.close()
+
+
+def attach_paired_speedups(runs: List[Dict[str, Any]]) -> None:
+    """Computes paired Time-to-Success speedup of Tempo over baselines on commonly-succeeded scenes."""
+    by_key = {(r["suite"], r["num_streams"], r["policy"]): r for r in runs}
+    for (suite_tag, n_s, _pol), r in by_key.items():
+        tempo_r = by_key.get((suite_tag, n_s, f"Tempo (Engine, N={n_s})"))
+        if tempo_r is None or r is tempo_r:
+            continue
+        tempo_succ = {
+            ep["scene_id"]: float(ep["wall_time_s"])
+            for ep in tempo_r["episodes_detail"]
+            if ep["success"]
+        }
+        base_succ = {
+            ep["scene_id"]: float(ep["wall_time_s"])
+            for ep in r["episodes_detail"]
+            if ep["success"]
+        }
+        common = sorted(set(tempo_succ) & set(base_succ))
+        if common:
+            t_mean = sum(tempo_succ[k] for k in common) / len(common)
+            b_mean = sum(base_succ[k] for k in common) / len(common)
+            r["paired_common_successes"] = len(common)
+            r["paired_wall_s_vs_tempo"] = {
+                "baseline_s": round(b_mean, 2),
+                "tempo_s": round(t_mean, 2),
+                "tempo_speedup_x": round(b_mean / max(1e-6, t_mean), 2),
+            }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["smoke", "full"], default="full")
     parser.add_argument("--dyn-repo", type=pathlib.Path, required=True, help="Path to cloned LIBERO-Dynamic repository")
+    parser.add_argument("--log-dir", type=pathlib.Path, default=pathlib.Path("/tmp/inspect_logs"))
     parser.add_argument("--out-json", type=pathlib.Path, default=pathlib.Path("benchmarks/libero_dynamic_eval.json"))
     args = parser.parse_args()
 
+    args.log_dir.mkdir(parents=True, exist_ok=True)
     gpu_name = torch.cuda.get_device_name(0)
-    print(f"[DynamicEval] GPU={gpu_name} | mode={args.mode}", flush=True)
-
-    _, smolvla_dir = resolve_checkpoint("lerobot/smolvla_libero")
+    print(f"[RealtimeBench] GPU={gpu_name} | mode={args.mode} | log_dir={args.log_dir}", flush=True)
 
     _, pi05_dir = resolve_checkpoint("lerobot/pi05_libero_finetuned_v044")
-    pi05_helper = ModelPreprocHelper("pi05", pi05_dir)
-    smolvla_helper = ModelPreprocHelper("smolvla", smolvla_dir)
+    pi05_helper = ModelPreprocHelper(pi05_dir)
 
     if args.mode == "smoke":
-        selected_tasks = [("libero_spatial", 0)]
-        traj_indices = [0]
-        max_steps = 200
+        candidate_tasks = [("libero_spatial", 0), ("libero_object", 0)]
+        static_inits = [0]
+        dyn_trajs = [0]
+        max_steps = 240
+        stream_counts = (1,)
     else:
-        selected_tasks = [
+        candidate_tasks = [
             ("libero_spatial", 0),
+            ("libero_spatial", 1),
             ("libero_object", 0),
             ("libero_goal", 0),
         ]
-        traj_indices = [0, 1]
-        max_steps = 200
+        static_inits = [0, 1, 2]
+        dyn_trajs = [0, 1]
+        max_steps = 260
+        stream_counts = (1, 2)
 
     levels = ["l1", "l2", "l3"]
-    dyn_args, items_by_id, scenes_by_level = build_dynamic_scenes(
+    dyn_args, items_by_id, static_scenes, dyn_scenes_by_level = build_static_and_dynamic_scenes(
         args.dyn_repo,
         pathlib.Path("/tmp/libero_dyn_work"),
         levels,
-        traj_indices,
-        selected_tasks,
+        candidate_tasks,
+        static_inits,
+        candidate_tasks,
+        dyn_trajs,
     )
-    total_scenes = sum(len(v) for v in scenes_by_level.values())
-    print(f"[DynamicEval] Built {total_scenes} dynamic scenes across levels={levels}", flush=True)
-    if total_scenes == 0:
+    n_dyn = sum(len(v) for v in dyn_scenes_by_level.values())
+    print(
+        f"[RealtimeBench] Built {len(static_scenes)} static LIBERO scenes and {n_dyn} LIBERO-Dynamic scenes",
+        flush=True,
+    )
+    if n_dyn == 0:
         raise RuntimeError("No LIBERO-Dynamic scenes were built; check config discovery!")
 
-    # Compute max prompt_len across selected tasks
     dummy_st = np.zeros(8, dtype=np.float32)
-    pi05_plen = max(
-        pi05_helper.prompt_len_for(sc.instruction, dummy_st)
-        for scs in scenes_by_level.values()
-        for sc in scs
-    )
-    smol_plen = max(
-        smolvla_helper.prompt_len_for(sc.instruction, dummy_st)
-        for scs in scenes_by_level.values()
-        for sc in scs
-    )
+    all_scenes = static_scenes + [sc for scs in dyn_scenes_by_level.values() for sc in scs]
+    pi05_plen = max(pi05_helper.prompt_len_for(sc.instruction, dummy_st) for sc in all_scenes)
 
-    embodiment = LiberoDynamicRealtimeEmbodiment(items_by_id, dyn_args)
+    embodiment = LiberoRealtimeEmbodiment(items_by_id, dyn_args)
     all_runs: List[Dict[str, Any]] = []
     try:
-        # Suite 1: Flagship 3.3B Pi0.5 on LIBERO-Dynamic (N=1 in smoke; N=1 and N=2 in full)
-        pi05_streams = (1,) if args.mode == "smoke" else (1, 2)
-        for n_streams in pi05_streams:
-            print(f"\n=== Pi0.5 (3.3B) | Concurrent Robot Streams N={n_streams} ===", flush=True)
-            for label, factory in (
-                (
-                    f"SyncChunk (K=10, N={n_streams})",
-                    lambda n=n_streams: SyncChunkPolicy(pi05_helper, prompt_len=pi05_plen, chunk_horizon=10, num_streams=n),
-                ),
-                (
-                    f"PyTorchAsync (SDPA, N={n_streams})",
-                    lambda n=n_streams: PyTorchAsyncPolicy(pi05_helper, prompt_len=pi05_plen, num_streams=n, replan_every_steps=2),
-                ),
-                (
-                    f"Tempo (Engine, N={n_streams})",
-                    lambda n=n_streams: TempoPolicy(pi05_helper, prompt_len=pi05_plen, num_streams=n, replan_every_steps=2),
-                ),
-            ):
-                res = evaluate_policy_across_levels(factory, label, embodiment, scenes_by_level, max_steps)
-                res["model"] = "lerobot/pi05_libero_finetuned_v044"
-                res["num_streams"] = n_streams
-                all_runs.append(res)
+        for n_streams in stream_counts:
+            if args.mode == "smoke":
+                factories = [
+                    (
+                        f"SyncChunk (K=10, N={n_streams})",
+                        lambda n=n_streams: SyncChunkPolicy(
+                            pi05_helper, prompt_len=pi05_plen, chunk_horizon=10, num_streams=n, compile_fast=False
+                        ),
+                    ),
+                    (
+                        f"CompiledSync (K=4, N={n_streams})",
+                        lambda n=n_streams: SyncChunkPolicy(
+                            pi05_helper, prompt_len=pi05_plen, chunk_horizon=4, num_streams=n, compile_fast=True
+                        ),
+                    ),
+                    (
+                        f"Tempo (Engine, N={n_streams})",
+                        lambda n=n_streams: TempoPolicy(
+                            pi05_helper, prompt_len=pi05_plen, num_streams=n, slow_every_steps=2, fast_every_steps=4
+                        ),
+                    ),
+                ]
+            else:
+                factories = [
+                    (
+                        f"SyncChunk (K=10, N={n_streams})",
+                        lambda n=n_streams: SyncChunkPolicy(
+                            pi05_helper, prompt_len=pi05_plen, chunk_horizon=10, num_streams=n, compile_fast=False
+                        ),
+                    ),
+                    (
+                        f"CompiledSync (K=4, N={n_streams})",
+                        lambda n=n_streams: SyncChunkPolicy(
+                            pi05_helper, prompt_len=pi05_plen, chunk_horizon=4, num_streams=n, compile_fast=True
+                        ),
+                    ),
+                    (
+                        f"PyTorchAsync (SDPA, N={n_streams})",
+                        lambda n=n_streams: PyTorchAsyncPolicy(
+                            pi05_helper, prompt_len=pi05_plen, num_streams=n, slow_every_steps=2, fast_every_steps=4
+                        ),
+                    ),
+                    (
+                        f"Tempo (Engine, N={n_streams})",
+                        lambda n=n_streams: TempoPolicy(
+                            pi05_helper, prompt_len=pi05_plen, num_streams=n, slow_every_steps=2, fast_every_steps=4
+                        ),
+                    ),
+                ]
 
-        # Suite 2: 450M SmolVLA on LIBERO-Dynamic under 4-Robot Fleet Load (N=4 streams on 1 GPU)
-        if args.mode == "full":
-            n_streams = 4
-            print(f"\n=== SmolVLA (450M) | Concurrent Robot Streams N={n_streams} ===", flush=True)
-            for label, factory in (
-                (
-                    f"SyncChunk (K=10, N={n_streams})",
-                    lambda n=n_streams: SyncChunkPolicy(smolvla_helper, prompt_len=smol_plen, chunk_horizon=10, num_streams=n),
-                ),
-                (
-                    f"PyTorchAsync (SDPA, N={n_streams})",
-                    lambda n=n_streams: PyTorchAsyncPolicy(smolvla_helper, prompt_len=smol_plen, num_streams=n, replan_every_steps=2),
-                ),
-                (
-                    f"Tempo (Engine, N={n_streams})",
-                    lambda n=n_streams: TempoPolicy(smolvla_helper, prompt_len=smol_plen, num_streams=n, replan_every_steps=2),
-                ),
-            ):
-                res = evaluate_policy_across_levels(factory, label, embodiment, scenes_by_level, max_steps)
-                res["model"] = "lerobot/smolvla_libero"
-                res["num_streams"] = n_streams
-                all_runs.append(res)
+            print(f"\n=== [Suite A] Standard LIBERO (Static, 20 Hz Real-Time) | N={n_streams} ===", flush=True)
+            for label, factory in factories:
+                res_s = evaluate_policy_suite(
+                    factory,
+                    label,
+                    n_streams,
+                    embodiment,
+                    "LIBERO-Static",
+                    {"static": static_scenes},
+                    max_steps,
+                    args.log_dir,
+                )
+                all_runs.append(res_s)
+
+            print(f"\n=== [Suite B] LIBERO-Dynamic (0.03 / 0.06 / 0.09 m/s, 20 Hz Real-Time) | N={n_streams} ===", flush=True)
+            for label, factory in factories:
+                res_d = evaluate_policy_suite(
+                    factory,
+                    label,
+                    n_streams,
+                    embodiment,
+                    "LIBERO-Dynamic",
+                    dyn_scenes_by_level,
+                    max_steps,
+                    args.log_dir,
+                )
+                all_runs.append(res_d)
     finally:
         embodiment.close()
+
+    attach_paired_speedups(all_runs)
 
     payload = {
         "gpu": gpu_name,
         "harness": "robocurve/inspect-robots",
-        "benchmark": "LIBERO-Dynamic (20 Hz real-time advancing MuJoCo physics)",
+        "benchmarks": [
+            "LIBERO-Static (libero_spatial, libero_object, libero_goal @ 20 Hz real-time)",
+            "LIBERO-Dynamic (0.03 / 0.06 / 0.09 m/s moving objects @ 20 Hz real-time)",
+        ],
         "runs": all_runs,
     }
+    args.out_json.parent.mkdir(parents=True, exist_ok=True)
     args.out_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"\n[DynamicEval] Saved results to {args.out_json}", flush=True)
-    print(json.dumps(payload, indent=2), flush=True)
+    print(f"\n[RealtimeBench] Saved results to {args.out_json}", flush=True)
 
 
 if __name__ == "__main__":
