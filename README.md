@@ -14,7 +14,28 @@ Fast serving engine for System 1 + System 2 robot policies
 
 ---
 
-**Tempo** is a fast inference and serving engine for `System 1 + System 2` robot policies.
+**Tempo** is a fast C++/CUDA serving engine for dual-system robot policies—supporting mainstream VLAs (`pi05`, `GR00T`, `SmolVLA`) as well as custom System 1 + System 2 PyTorch models.
+
+On a **single `RTX 4090`**—using the exact same pretrained weights with zero retraining—Tempo finishes tasks faster and directly improves success rates on dynamic manipulation benchmarks:
+
+**[LIBERO-Dynamic](https://github.com/renshaojie233/LIBERO-Dynamic) (`pi05` on `1x RTX 4090`, `20 Hz`, `360` episodes)**
+
+| Deployment | Success Rate | Completion Time | Robot Stall |
+| :--- | :---: | :---: | :---: |
+| Synchronous | 31.7% | 17.82 s | 40.0% |
+| `torch.compile` Sync | 30.6% | 18.66 s | 35.8% |
+| Python Async | 7.2% | 8.37 s | 1.6% |
+| **Tempo** | **39.2% (+7.5–8.6 pts)** | **10.35 s (1.7–1.8x faster)** | **0.3% (>100x lower)** |
+
+When scaling across **multiple GPUs** to serve concurrent robots or large-scale parallel evaluation, Tempo cuts tail latency by orders of magnitude over multi-stream PyTorch on the same hardware:
+
+**Multi-GPU Serving (Tempo vs. Multi-Stream PyTorch)**
+
+| Model | GPUs | Concurrent Robots | Tail Latency (`P99`) |
+| :--- | :--- | :---: | :---: |
+| **`pi05` (3.3B)** | `4x H100 SXM` | 4 | **26.8 ms** vs. 2.94 s (**109.7x lower**) |
+| **`GR00T-N1.5` (3B)** | `4x H100 SXM` | 48 | **13.3 ms** vs. 447.9 ms (**33.6x lower**) |
+| **`SmolVLA` (450M)** | `2x RTX PRO 6000` | 16 | **24.4 ms** vs. 294.5 ms (**12.1x lower**) |
 
 Tempo is fast with:
 - Lock-free paged KV and latent cache across Slow and Fast streams
@@ -67,16 +88,17 @@ actions, *_ = engine.sample_actions(cpu=True)
 
 ## Benchmarks
 
-Evaluated against a multi-stream PyTorch `SDPA` baseline ([full tables & reproduction →](./benchmarks/README.md)):
+### Slow/Fast Multi-GPU Disaggregation
 
-| Model | Hardware & Placement | Max Streams at SLO | Chunk `P99` (Tempo vs. PyTorch) | Zero-Underrun Capacity |
-| :--- | :--- | :---: | :---: | :---: |
-| `nvidia/GR00T-N1.5-3B` | `4x H100 SXM` (`1S : 3F`) | **12** | **9.56 ms** vs. 393.8 ms (**41.2x**) | 48 streams |
-| `lerobot/pi05_base` | `4x H100 SXM` (`Colocated`) | **4** | **26.82 ms** vs. 2,943.4 ms (**109.7x**) | 4 streams |
-| `lerobot/pi05_base` | `1x RTX 4090` (`Colocated`) | **1** | **23.90 ms** vs. 271.6 ms (**11.4x**) | 2 streams |
-| `lerobot/smolvla_base` | `1x RTX 4090` (`Colocated`) | **8** | **24.36 ms** vs. 136.1 ms (**5.6x**) | 12 streams |
+Decoupling `SlowBackbone` and `FastHead` onto dedicated GPUs isolates Fast control loops from heavy VLM prefill—cutting `GR00T-N1.5` `Chunk P99` on `H100 SXM` from `22.1 ms` (`Colocated`) to **`9.6 ms`** (`1S : 3F`, **2.3x lower**) while raising capacity from `32` to **`48` concurrent robots**. On large 3B+ VLAs (`lerobot/pi05_base`), sharing or pipeline-parallelizing a single Slow VLM across Fast GPUs cuts total cluster VRAM by **45–59%**:
 
-On `20 Hz` real-time manipulation (`1x RTX 4090`, `lerobot/pi05_libero_finetuned_v044`), Tempo cuts robot inference stall time from `34–40%` to **`<=1%`**, reaching **`100%` (`12/12`)** on standard LIBERO in **`5.89 s`** vs. `8.18–8.95 s` for synchronous baselines (**`1.69–1.85x` higher throughput**). On moving-object [LIBERO-Dynamic](https://github.com/renshaojie233/LIBERO-Dynamic), Tempo cuts mean time-to-success from `12.20–13.04 s` to **`6.49 s`** (**`1.82–2.39x` faster** on paired tasks) with the highest success rate (**`45.8%`** vs. `41.7%` sync and `12.5%` async PyTorch) and **`1.83–1.96x` higher throughput** than sync ([details →](./benchmarks/README.md#3-real-time-manipulation)).
+| `pi05` Placement (`4` GPUs, `4` Robots) | `4x H100 SXM` Chunk `P50 / P99` | `4x H100` Peak / Total VRAM | `4x RTX PRO 6000` Chunk `P50 / P99` | `4x RTX PRO 6000` Peak / Total VRAM |
+| :--- | :---: | :---: | :---: | :---: |
+| `4x Colocated` (`slow=[0..3], fast=[0..3]`) | **20.55 / 26.82 ms** | 5.89 / 23.55 GB | **22.12 / 28.76 ms** | 5.84 / 23.35 GB |
+| `1S : 3F` (`slow=[0], fast=[1,2,3]`) | 20.57 / 36.83 ms | 6.42 / **12.68 GB (-46%)** | 22.18 / 39.74 ms | 5.72 / **9.76 GB (-58%)** |
+| `2-Stage PP + 2F` (`slow=[[0,1]], fast=[2,3]`) | 20.40 / 36.40 ms | **4.33** / 12.95 GB (-45%) | 22.18 / 39.68 ms | **3.53** / **9.50 GB (-59%)** |
+
+Full `1x`–`4x` GPU serving matrices, [`inspect-robots`](https://github.com/robocurve/inspect-robots) × `LIBERO` (`400` episodes) / [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`360` episodes) evaluations, and reproduction commands → [benchmarks/README.md](./benchmarks/README.md).
 
 ## License
 

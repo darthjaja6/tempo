@@ -2,7 +2,7 @@
 
 ## 1. Serving Throughput & Tail Latency
 
-Each stream drives `2 Hz` Slow camera updates, `20 Hz` Fast chunk requests (`FP8` Fast heads on `SM89+`), and `500 Hz` action polling against a `BF16` multi-stream PyTorch `SDPA` + per-stream `RWLock` baseline ([`baselines.py`](./baselines.py)).
+Each stream drives `2 Hz` Slow camera updates, `20 Hz` Fast chunk requests (`FP8` Fast heads on `SM89+`), and `500 Hz` action polling against a `BF16` multi-stream PyTorch `SDPA` + per-stream lock baseline ([`baselines.py`](./baselines.py)).
 
 - **Max Streams at SLO**: Highest stream count meeting `Chunk P99 <= deadline`, `0` underruns, and `Slow staleness P99 <= 950 ms` (the PyTorch baseline misses the latency/underrun SLO at `1` stream).
 - **FP8 Accuracy**: `FP8` Fast heads retain `>0.999` cosine similarity against `BF16` on GR00T-N1.5 and $\pi_{0.5}$, and `>0.993` on SmolVLA.
@@ -13,6 +13,7 @@ Each stream drives `2 Hz` Slow camera updates, `20 Hz` Fast chunk requests (`FP8
 | `nvidia/GR00T-N1.5-3B` (25 ms) | `4x H100 SXM` (`1S : 3F`) | **12** | **9.56 ms** vs. 393.8 ms (41.2x) | 48 streams | 2.67 / 6.95 GB |
 | `nvidia/GR00T-N1.5-3B` (25 ms) | `2x H100 SXM` (`1S : 1F`) | **8** | **10.38 ms** vs. 125.6 ms (12.1x) | 32 streams | 3.23 / 4.73 GB |
 | `nvidia/GR00T-N1.5-3B` (25 ms) | `1x H100 SXM` (`Colocated`) | **8** | **22.12 ms** vs. 150.6 ms (6.8x) | 32 streams | 3.98 / 3.98 GB |
+| `lerobot/pi05_base` (30 ms) | `4x H100 SXM` (`Colocated`) | **4** | **26.82 ms** vs. 2,943.4 ms (109.7x) | 4 streams | 5.89 / 23.55 GB |
 | `lerobot/pi05_base` (30 ms) | `2x H100 SXM` (`1S : 1F`) | **1** | **20.76 ms** vs. 423.6 ms (20.4x) | 2 streams | 5.85 / 7.18 GB |
 | `lerobot/pi05_base` (30 ms) | `1x H100 SXM` (`Colocated`) | **1** | **28.31 ms** vs. 457.4 ms (16.2x) | 2 streams | 6.15 / 6.15 GB |
 | `lerobot/pi05_base` (30 ms) | `2x RTX PRO 6000` (`1S : 1F`) | **1** | **23.71 ms** vs. 381.9 ms (16.1x) | 2 streams | 5.35 / 6.63 GB |
@@ -35,30 +36,32 @@ All placements below run with `0` underruns:
 
 ## 3. Real-Time Manipulation
 
-`lerobot/pi05_libero_finetuned_v044` (`1x RTX 4090`, `BF16`, `20 Hz` real-time control via [`inspect-robots`](https://github.com/robocurve/inspect-robots), [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)):
+`lerobot/pi05_libero_finetuned_v044` (`1x RTX 4090`, `BF16`, `20 Hz` real-time control via [`inspect-robots`](https://github.com/robocurve/inspect-robots), same checkpoint with zero retraining; raw episode logs in [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)):
 
-- **`SyncChunk` (`K = 10`)**: Open-loop synchronous inference every 10 steps (`500 ms`).
-- **`CompiledSync` (`K = 4`)**: `torch.compile` synchronous inference every 4 steps (`200 ms`).
-- **`PyTorchAsync` (`SDPA`)**: Dual-stream async PyTorch (`10 Hz` Slow, `5 Hz` Fast).
-- **Tempo**: `Engine` (`10 Hz` Slow, `5 Hz` Fast, `CUDA Graph` + `RTC`).
+- **Synchronous** (`K = 10`): Blocking open-loop chunk inference every 10 steps (`500 ms`).
+- **`torch.compile` Sync** (`K = 4`): Compiled blocking chunk inference every 4 steps (`200 ms`).
+- **Python Async**: Dual-stream async PyTorch (`10 Hz` Slow, `5 Hz` Fast, `SDPA` + per-stream lock).
+- **Tempo**: Lock-free C++/CUDA dual-stream serving (`10 Hz` Slow, `5 Hz` Fast, `CUDA Graph` + `RTC`). `Robot Stall` measures the fraction of episode time the robot stands frozen waiting for blocking inference.
 
-### Standard `LIBERO` (`12` Scenes: `libero_spatial`, `libero_object`, `libero_goal`)
+### Moving-Object [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`360` Episodes: `40` Tasks × `3` Motion Families × `0.03 / 0.06 / 0.09 m/s`)
 
-| Policy | Success | Time-to-Success (Paired vs. Tempo) | Robot Stall | Throughput (`tasks/min`) | Chunk Latency (`P50 / P99`) |
+Tempo improves overall moving-object success rate with statistical significance under paired McNemar testing (`p = 0.011` vs. `Synchronous`, `p = 0.0052` vs. `torch.compile Sync`, `p < 1e-10` vs. `Python Async`) while leading across every speed tier and motion family:
+
+| Deployment | Success | `0.03 / 0.06 / 0.09 m/s` | Time-to-Success (Paired vs. Tempo) | Robot Stall | Throughput (`tasks/min`) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| `SyncChunk` (`K = 10`) | 91.7% (11/12) | 8.95 s (8.95 vs. 5.82 s, **1.54x**) | 40.4% | 5.51 | 328.7 / 375.5 ms |
-| `CompiledSync` (`K = 4`) | 91.7% (11/12) | 8.18 s (8.18 vs. 5.79 s, **1.41x**) | 34.4% | 6.02 | 104.2 / 129.2 ms |
-| `PyTorchAsync` (`SDPA`) | 66.7% (8/12) | 6.80 s (6.80 vs. 6.18 s, **1.10x**) | 4.2% | 4.44 | 524.9 / 674.5 ms |
-| **Tempo** | **100.0% (12/12)** | **5.89 s** | **1.0%** | **10.19** | **23.0 / 24.3 ms** |
+| Synchronous (`K = 10`) | 31.7% (114/360) | 35.8% / 30.8% / 28.3% | 17.82 s (17.07 vs. 9.32 s, **1.83x**) | 40.0% | 0.48 |
+| `torch.compile` Sync (`K = 4`) | 30.6% (110/360) | 38.3% / 25.8% / 27.5% | 18.66 s (15.76 vs. 9.25 s, **1.70x**) | 35.8% | 0.48 |
+| Python Async | 7.2% (26/360) | 6.7% / 6.7% / 8.3% | 8.37 s (6.77 vs. 6.56 s, 1.03x) | 1.6% | 0.15 |
+| **Tempo** | **39.2% (141/360)** | **46.7% / 35.0% / 35.8%** | **10.35 s** | **0.3%** | **1.05 (2.19x)** |
 
-### Moving-Object [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`24` Scenes: `0.03 / 0.06 / 0.09 m/s`)
+### Standard `LIBERO` (`400` Episodes: `40` Tasks × `10` Trials Across `spatial`, `object`, `goal`, `10`)
 
-| Policy | Success | `0.03 / 0.06 / 0.09 m/s` | Time-to-Success (Paired vs. Tempo) | Robot Stall | Throughput (`tasks/min`) |
+| Deployment | Success (`spatial / object / goal / 10`) | Time-to-Success (Paired vs. Tempo) | Robot Stall | Throughput (`tasks/min`) | Chunk Latency (`P50 / P99`) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| `SyncChunk` (`K = 10`) | 41.7% (10/24) | 37.5% / 50.0% / 37.5% | 13.04 s (15.23 vs. 6.36 s, **2.39x**) | 39.7% | 1.39 |
-| `CompiledSync` (`K = 4`) | 41.7% (10/24) | 37.5% / 37.5% / 50.0% | 12.20 s (11.07 vs. 6.09 s, **1.82x**) | 35.0% | 1.49 |
-| `PyTorchAsync` (`SDPA`) | 12.5% (3/24) | 0.0% / 12.5% / 25.0% | 7.56 s (6.09 vs. 6.17 s, 0.99x) | 3.0% | 0.59 |
-| **Tempo** | **45.8% (11/24)** | **37.5% / 50.0% / 50.0%** | **6.49 s** | **0.7%** | **2.73** |
+| Synchronous (`K = 10`) | 97.2% (`98 / 100 / 95 / 96%`) | 12.20 s (12.04 vs. 7.55 s, **1.60x**) | 41.2% | 4.61 | 376.4 / 488.6 ms |
+| `torch.compile` Sync (`K = 4`) | 96.2% (`99 / 100 / 90 / 96%`) | 11.20 s (11.05 vs. 7.49 s, **1.48x**) | 35.7% | 4.89 | 115.5 / 164.5 ms |
+| Python Async | 49.0% (`44 / 46 / 58 / 48%`) | 7.66 s (7.49 vs. 7.32 s, 1.02x) | 3.6% | 2.37 | 578.5 / 828.8 ms |
+| **Tempo** | **96.0%** (`97 / 98 / 96 / 93%`) | **7.56 s** | **0.8%** | **7.18 (1.47–1.56x)** | **24.2 / 25.1 ms** |
 
 ## Reproduce
 
@@ -67,5 +70,5 @@ python -m benchmarks.run_suite --model lerobot/smolvla_base --mode colocated --d
 python -m benchmarks.run_suite --model nvidia/GR00T-N1.5-3B --mode both --deadline-ms 25 --streams 1,4,8,16,24,32
 python -m benchmarks.run_suite --model nvidia/GR00T-N1.5-3B --mode custom --slow-devices 0 --fast-devices 1,2,3 --deadline-ms 25 --streams 4,12,24,32,42,48
 python -m benchmarks.run_suite --model lerobot/pi05_base --mode four_gpu_matrix --deadline-ms 30 --streams 4,8,12,16,24,32
-PYTHONPATH=/path/to/LIBERO-Dynamic python -m benchmarks.eval_libero_dynamic --dyn-repo /path/to/LIBERO-Dynamic --out-json benchmarks/libero_dynamic_eval.json
+python -m benchmarks.eval_libero_dynamic --dyn-repo /path/to/LIBERO-Dynamic --out-json benchmarks/libero_dynamic_eval.json
 ```
