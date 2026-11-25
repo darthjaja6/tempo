@@ -14,9 +14,9 @@ Fast serving engine for System 1 + System 2 robot policies
 
 ---
 
-**Tempo** is a fast C++/CUDA serving engine for dual-system robot policies—supporting mainstream VLAs (`pi05`, `GR00T`, `SmolVLA`) as well as custom System 1 + System 2 PyTorch models.
+**Tempo** is a fast serving engine for dual-system robot policies, supporting mainstream VLAs (`pi05`, `GR00T`, `SmolVLA`) and custom System 1 + System 2 models.
 
-On a **single `RTX 4090`**—using the exact same pretrained weights with zero retraining—Tempo finishes tasks faster and directly improves success rates on dynamic manipulation benchmarks:
+On a **single `RTX 4090`**, serving the same pretrained checkpoint with Tempo finishes tasks faster and directly improves success rates on dynamic manipulation benchmarks:
 
 **[LIBERO-Dynamic](https://github.com/renshaojie233/LIBERO-Dynamic) (`pi05` on `1x RTX 4090`, `20 Hz`, `360` episodes)**
 
@@ -63,19 +63,31 @@ git clone https://github.com/darthjaja6/tempo.git && cd tempo
 pip install -e . --no-build-isolation
 ```
 
-Serve a pretrained policy:
+Serve a pretrained policy in a real-time control loop:
 
 ```python
+import time
 import torch
 from tempo import Engine
 
-engine = Engine("lerobot/smolvla_base", prompt="pick up the cup")
-engine.push_slow(torch.zeros(engine.slow_obs_shape, dtype=torch.uint8))
+engine = Engine("lerobot/smolvla_base")
+engine.set_prompt("pick up the cup")
+
+cams = torch.randint(0, 256, engine.slow_obs_shape, dtype=torch.uint8)  # simulated RGB cameras
+engine.push_slow(cams)
 engine.wait_ready()
-actions, *_ = engine.sample_actions(cpu=True)
+
+for step in range(500):               # 1 s real-time loop at 500 Hz (2 ms/step)
+    if step % 250 == 0:               # 2 Hz camera frame -> System 2 (Slow)
+        engine.push_slow(cams)
+    if step % 25 == 0:                # 20 Hz chunk refresh -> System 1 (Fast)
+        engine.push_fast()
+    actions, *_ = engine.sample_actions(cpu=True)
+    time.sleep(0.002)
+print(actions.shape)                  # torch.Size([1, 6])
 ```
 
-- Custom `SlowBackbone` / `FastHead` policies & `@engine.stage`: [examples/quickstart.py](./examples/quickstart.py)
+- Modular `(Slow × Fast)` pairing & `@engine.stage`: [examples/quickstart.py](./examples/quickstart.py)
 - Multi-GPU disaggregation (`slow_devices=[0], fast_devices=[1, 2, 3]`) & edge-cloud serving: [examples/multi_gpu_serving.py](./examples/multi_gpu_serving.py)
 
 ## Supported Models
@@ -85,6 +97,46 @@ actions, *_ = engine.sample_actions(cpu=True)
 | `lerobot/pi05_base` (+ fine-tuned variants) | PaliGemma-2B | Gemma Action Expert (10-step Flow) |
 | `nvidia/GR00T-N1.5-3B` | Eagle2-VLM (SigLIP + Qwen3-1.7B) | Cross-Attention DiT (4-step Flow) |
 | `lerobot/smolvla_base` (+ fine-tuned variants) | SmolVLM2 (SigLIP + Llama-16L) | SmolLM2 Action Expert (10-step Flow) |
+
+### Adding Custom System 1 + System 2 Models
+
+Supporting a new dual-system architecture only requires subclassing `SlowBackbone` and `FastHead` connected by a `TemporalChannel` (`mode="hidden"` for latent features or `mode="kv"` for layer-wise KV cross-attention)—Tempo automatically handles piecewise CUDA Graph slicing, lock-free paging, `torch.compile`, and Real-Time Chunking (RTC):
+
+```python
+import torch
+import torch.nn as nn
+from tempo import Engine, FastHead, SlowBackbone, TemporalChannel, mark_sliceable
+
+class MySlowVLM(SlowBackbone):
+    def __init__(self):
+        super().__init__()
+        self.channel = TemporalChannel(hidden_dim=256, seq_len=64, mode="hidden")
+        self.obs_shape = (64, 256)
+        self.encoder = nn.Sequential(mark_sliceable(nn.Linear(256, 256)), nn.SiLU())
+
+    def forward(self, obs, ctx):
+        ctx.write_hidden_state(self.encoder(obs))  # or ctx.write_layer_kv(...) in mode="kv"
+
+class MyFastPolicy(FastHead):
+    action_dim, chunk_size, obs_shape = 7, 50, (14,)
+
+    def __init__(self):
+        super().__init__()
+        self.head = nn.Linear(14 + 256, 50 * 7)
+
+    def forward(self, fast_obs, state, frozen_prefix):
+        hidden, _ = state.read_hidden()            # or state.cross_attend(q, layer_idx)
+        pred = self.head(torch.cat([fast_obs, hidden.mean(dim=1)], dim=-1)).view(-1, 50, 7)
+        p = frozen_prefix.size(1)
+        return torch.cat([state.splice_prefix(pred[:, :p], frozen_prefix), pred[:, p:]], dim=1)
+
+engine = Engine(slow=MySlowVLM(), fast=MyFastPolicy())
+engine.push_slow(torch.randn(64, 256))
+engine.wait_ready(torch.randn(14))
+print(engine.sample_actions(cpu=True)[0].shape)  # torch.Size([1, 7])
+```
+
+You can also register Hugging Face checkpoint loaders via `@ModelRegistry.register("my_vla")` or define custom execution graphs with `@engine.stage`. Walk through runnable end-to-end scripts in [`examples/`](./examples).
 
 ## Benchmarks
 

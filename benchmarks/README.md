@@ -36,7 +36,7 @@ All placements below run with `0` underruns:
 
 ## 3. Real-Time Manipulation
 
-`lerobot/pi05_libero_finetuned_v044` (`1x RTX 4090`, `BF16`, `20 Hz` real-time control via [`inspect-robots`](https://github.com/robocurve/inspect-robots), same checkpoint with zero retraining; raw episode logs in [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)):
+`lerobot/pi05_libero_finetuned_v044` (`1x RTX 4090`, `BF16`, `20 Hz` real-time control via [`inspect-robots`](https://github.com/robocurve/inspect-robots), identical checkpoint across all deployments; raw episode logs in [`libero_dynamic_eval.json`](./libero_dynamic_eval.json)):
 
 - **Synchronous** (`K = 10`): Blocking open-loop chunk inference every 10 steps (`500 ms`).
 - **`torch.compile` Sync** (`K = 4`): Compiled blocking chunk inference every 4 steps (`200 ms`).
