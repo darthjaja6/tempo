@@ -16,20 +16,20 @@ Fast serving engine for System 1 + System 2 robot policies
 
 **Tempo** is a fast serving engine for dual-system robot policies, supporting mainstream VLAs (`pi05`, `GR00T`, `SmolVLA`) and custom System 1 + System 2 models.
 
-On [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1,800` episodes on `1x RTX 5090`), Tempo **beats latency-retrained `VLASH` with zero retraining**:
+On [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1x RTX 5090`), Tempo **beats latency-retrained `VLASH` with zero retraining**:
 
-| 1 Robot (`pi05`, Zero Retraining) | Retrained | Success Rate | Mean Latency |
+| 1 Robot ([`pi05_libero`](https://github.com/Physical-Intelligence/openpi), Zero Retraining) | Retrained | Success Rate | Mean Latency |
 | :--- | :---: | :---: | :---: |
 | `LeRobot PyTorch` (Sync / Async) | No | 43.1% / 48.4% | 147 ms |
 | `VLASH` | **Yes** | 55.4% | 104 ms |
 | `OpenPI JAX Async` | No | 57.8% | 60 ms |
 | **Tempo** | **No** | **60.9%** | **39 ms** |
 
-Even against the **current dynamically fine-tuned SOTA (`OpenPI JAX`)**, Tempo matches single-robot performance—and once scaled to **`8` concurrent robots** on a single `RTX 5090` (`1,800` episodes), the SOTA collapses while Tempo holds firm:
+Even on the SOTA [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) checkpoint, Tempo matches `OpenPI JAX` on a single robot—and once scaled to **`8` concurrent robots** on one `RTX 5090`, `OpenPI JAX` collapses while Tempo holds firm:
 
-| 8 Concurrent Robots (Dynamically Fine-Tuned SOTA) | Success Rate | Mean Latency |
+| 8 Concurrent Robots ([`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000)) | Success Rate | Mean Latency |
 | :--- | :---: | :---: |
-| `OpenPI JAX Async` (Current SOTA) | 16.1% | 280 ms |
+| `OpenPI JAX Async` (SOTA) | 16.1% | 280 ms |
 | **Tempo** | **52.3% (3.25x)** | **27 ms** |
 
 Tempo is fast with:
@@ -102,7 +102,7 @@ Across mainstream pure-PyTorch VLAs, Tempo cuts multi-stream tail latency by ord
 | **`GR00T-N1.5` (3B)** | `4x H100 SXM` (`1S : 3F`) | 48 | **13.3 ms** vs. 447.9 ms (**33.6x lower**) |
 | **`SmolVLA` (450M)** | `2x RTX PRO 6000` (`1S : 1F`) | 16 | **24.4 ms** vs. 294.5 ms (**12.1x lower**) |
 
-Full [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1,800` episodes), `LIBERO` (`400` episodes), Slow/Fast disaggregation VRAM matrices, and reproduction commands → [benchmarks/README.md](./benchmarks/README.md).
+Full [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) and `LIBERO` results, Slow/Fast disaggregation VRAM matrices, and reproduction commands → [benchmarks/README.md](./benchmarks/README.md).
 
 ## License
 
