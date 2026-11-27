@@ -66,6 +66,7 @@ class GR00TConfig:
     num_timestep_buckets: int = 1000
     prompt_len: int = 32
     fast_precision: str = "bf16"
+    rtc_conditioning_supported: bool = False
     tokenizer_repo: str = _QWEN3_TOKENIZER_REPO
 
     def __post_init__(self) -> None:
@@ -107,6 +108,7 @@ class GR00TConfig:
             "state_dim": int(ah.get("max_state_dim", 64)),
             "num_inference_steps": int(ah.get("num_inference_timesteps", 4)),
             "num_timestep_buckets": int(ah.get("num_timestep_buckets", 1000)),
+            "rtc_conditioning_supported": bool(d.get("rtc_conditioning_supported", False)),
         }
         kwargs.update(overrides)
         return cls(**kwargs)
@@ -230,13 +232,23 @@ class VLSelfAttnBlock(nn.Module):
             loader.load_linear(self.ff_in, f"{prefix}.ff.net.0.proj", device=device)
             loader.load_linear(self.ff_out, f"{prefix}.ff.net.2", device=device)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        pos_ids: torch.Tensor,
+        seq_lens: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, S, D = x.shape
         h = self.norm1(x)
         q = self.to_q(h).view(B, S, self.heads, self.head_dim).transpose(1, 2)
         k = self.to_k(h).view(B, S, self.heads, self.head_dim).transpose(1, 2)
         v = self.to_v(h).view(B, S, self.heads, self.head_dim).transpose(1, 2)
-        attn = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(B, S, D)
+        attn_mask = (
+            pos_ids.view(1, 1, 1, S) < seq_lens.to(torch.int64).clamp(1, S).view(B, 1, 1, 1)
+            if seq_lens is not None
+            else None
+        )
+        attn = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask).transpose(1, 2).reshape(B, S, D)
         x = x + self.to_out(attn)
         h2 = F.gelu(self.ff_in(self.norm3(x)), approximate="tanh")
         return x + self.ff_out(h2)
@@ -283,10 +295,7 @@ class GR00TSlowStage(SlowBackbone):
             self.mlp1 = mark_sliceable(
                 nn.Linear(cfg.vision_width, cfg.llm_width, bias=True, device=dev, dtype=torch.bfloat16)
             )
-            self.register_buffer(
-                "lang_embeds",
-                torch.zeros((1, cfg.prompt_len, cfg.llm_width), dtype=torch.bfloat16, device=dev),
-            )
+            self._init_prompt_ring(cfg.prompt_len, cfg.llm_width, cfg.prefix_seq_len, dev)
         else:
             self.vision_tower = None
             self.mlp1 = None
@@ -358,7 +367,13 @@ class GR00TSlowStage(SlowBackbone):
         return self._tokenizer
 
     @torch.no_grad()
-    def set_prompt(self, prompt: Union[str, Sequence[int], torch.Tensor], **_kwargs: Any) -> None:
+    def set_prompt(
+        self,
+        prompt: Union[str, Sequence[int], torch.Tensor],
+        *,
+        stream_id: Optional[int] = None,
+        busy_rows: Tuple[int, int] = (-1, -1),
+    ) -> None:
         if not self.is_first_stage:
             return
         if isinstance(prompt, torch.Tensor) and prompt.is_floating_point():
@@ -368,12 +383,14 @@ class GR00TSlowStage(SlowBackbone):
                     f"Floating-point prompt embedding must have shape [L, {self.cfg.llm_width}], "
                     f"got {tuple(prompt.shape)}"
                 )
-            emb = emb_in.to(device=self.lang_embeds.device, dtype=torch.bfloat16)
+            emb = emb_in.to(dtype=torch.bfloat16)
+            valid_prompt_len = max(1, min(int(emb.size(0)), self.cfg.prompt_len))
             if emb.size(0) >= self.cfg.prompt_len:
                 emb = emb[: self.cfg.prompt_len]
             else:
                 emb = F.pad(emb, (0, 0, 0, self.cfg.prompt_len - emb.size(0)), value=0.0)
-            self.lang_embeds.copy_(emb.unsqueeze(0))
+            valid_seq_len = self.cfg.num_cameras * self.cfg.patches_per_camera + valid_prompt_len
+            self._write_prompt_slot(emb, valid_seq_len, stream_id, busy_rows)
             return
 
         if self._embed_weight_cpu is None:
@@ -390,6 +407,7 @@ class GR00TSlowStage(SlowBackbone):
         else:
             ids = [int(v) for v in prompt]
 
+        valid_prompt_len = max(1, min(len(ids), self.cfg.prompt_len))
         eos_id = 151643
         if len(ids) >= self.cfg.prompt_len:
             ids = ids[: self.cfg.prompt_len]
@@ -397,18 +415,27 @@ class GR00TSlowStage(SlowBackbone):
             ids = ids + [eos_id] * (self.cfg.prompt_len - len(ids))
 
         idx_t = torch.tensor(ids, dtype=torch.long)
-        emb = F.embedding(idx_t, self._embed_weight_cpu).to(
-            device=self.lang_embeds.device, dtype=torch.bfloat16
-        )
-        self.lang_embeds.copy_(emb.unsqueeze(0))
+        emb_cpu = F.embedding(idx_t, self._embed_weight_cpu)
+        valid_seq_len = self.cfg.num_cameras * self.cfg.patches_per_camera + valid_prompt_len
+        self._write_prompt_slot(emb_cpu, valid_seq_len, stream_id, busy_rows)
 
-    def encode_vl_hidden(self, obs_or_hidden: torch.Tensor) -> torch.Tensor:
+    def encode_vl_hidden(
+        self,
+        obs_or_hidden: torch.Tensor,
+        prompt_slot_ids: Optional[torch.Tensor] = None,
+        seq_lens: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if self.is_first_stage:
             assert self.vision_tower is not None and self.mlp1 is not None
             B = obs_or_hidden.size(0)
+            if prompt_slot_ids is None:
+                prompt_slot_ids = self._resolve_prompt_slot_ids(B, obs_or_hidden.device)
+            if seq_lens is None:
+                seq_lens = self.stream_seq_lens_gpu.index_select(0, prompt_slot_ids.to(torch.int64))
+            lang = self.lang_embeds.index_select(0, prompt_slot_ids.to(torch.int64))
             vis = self.vision_tower(obs_or_hidden)
             img_embs = self.mlp1(vis.reshape(B, -1, self.cfg.vision_width))
-            x = torch.cat([img_embs, self.lang_embeds.expand(B, -1, -1)], dim=1)
+            x = torch.cat([img_embs, lang], dim=1)
         else:
             x = obs_or_hidden
 
@@ -419,11 +446,23 @@ class GR00TSlowStage(SlowBackbone):
             assert self.llm_norm is not None and self.vlln is not None and self.vl_blocks is not None
             x = self.vlln(self.llm_norm(x))
             for blk in self.vl_blocks:
-                x = blk(x)
+                x = blk(x, self.pos_ids, seq_lens)
         return x
 
     def forward(self, obs_or_hidden: torch.Tensor, ctx: SlowCaptureContext) -> torch.Tensor:
-        x = self.encode_vl_hidden(obs_or_hidden)
+        B = obs_or_hidden.size(0)
+        probe_mode = bool(ctx._probe_mode)
+        slot_ids = (
+            self._resolve_prompt_slot_ids(B, obs_or_hidden.device, ctx)
+            if self.is_first_stage
+            else None
+        )
+        seq_lens = ctx.seq_lens
+        if seq_lens is None and not probe_mode and self.is_first_stage:
+            assert slot_ids is not None
+            seq_lens = self.stream_seq_lens_gpu.index_select(0, slot_ids)
+            ctx.seq_lens = seq_lens
+        x = self.encode_vl_hidden(obs_or_hidden, prompt_slot_ids=slot_ids, seq_lens=seq_lens)
         if self.is_last_stage:
             ctx.write_hidden_state(x)
         return x
@@ -455,9 +494,9 @@ class GR00TSlowStage(SlowBackbone):
                 if p == 0:
                     assert stg.vision_tower is not None and self.vision_tower is not None
                     assert stg.mlp1 is not None and self.mlp1 is not None
+                    stg._copy_prompt_ring_from(self, dev)
                     stg.vision_tower.load_state_dict(self.vision_tower.state_dict())
                     stg.mlp1.load_state_dict(self.mlp1.state_dict())
-                    stg.lang_embeds.copy_(self.lang_embeds.to(dev))
                     stg._embed_weight_cpu = self._embed_weight_cpu
                     stg._checkpoint_dir = self._checkpoint_dir
                     stg._tokenizer = self._tokenizer
@@ -564,6 +603,7 @@ class GR00TDiTBlock(nn.Module):
         x: torch.Tensor,
         temb: torch.Tensor,
         cross_kv: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        cross_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         B, T, D = x.shape
         scale, shift = self.ada_linear(F.silu(temb)).chunk(2, dim=-1)
@@ -574,10 +614,11 @@ class GR00TDiTBlock(nn.Module):
         if self.is_cross_attn:
             assert cross_kv is not None
             k, v = cross_kv
+            attn = F.scaled_dot_product_attention(q, k, v, attn_mask=cross_mask).transpose(1, 2).reshape(B, T, D)
         else:
             k = self.to_k(h).view(B, T, self.heads, self.head_dim).transpose(1, 2)
             v = self.to_v(h).view(B, T, self.heads, self.head_dim).transpose(1, 2)
-        attn = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(B, T, D)
+            attn = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(B, T, D)
         x = x + self.to_out(attn)
         h2 = self.norm3(x.float()).to(torch.bfloat16)
         x = x + self.ff_out(F.gelu(self.ff_in(h2), approximate="tanh"))
@@ -602,6 +643,7 @@ class GR00TFastHead(FastHead):
         self.max_q_len = max(64, 1 + cfg.num_future_tokens + cfg.chunk_size)
         self.max_q_heads = cfg.dit_heads
         self.embodiment_id = cfg.embodiment_id
+        self.rtc_conditioning_supported = bool(cfg.rtc_conditioning_supported)
 
         validate_fast_precision(cfg.fast_precision)
         use_fp8 = cfg.fast_precision == "fp8"
@@ -687,10 +729,16 @@ class GR00TFastHead(FastHead):
         channel: TemporalChannel,
         device: torch.device,
         sample_hidden: Optional[torch.Tensor] = None,
+        sample_seq_len: Optional[int] = None,
     ) -> None:
         if self.cfg.fast_precision != "fp8":
             return
         B = 4
+        eff_seq = (
+            max(1, min(int(sample_seq_len), channel.max_seq_len))
+            if sample_seq_len is not None
+            else channel.max_seq_len
+        )
         dummy_obs = torch.randn((B, self.cfg.state_dim), dtype=torch.bfloat16, device=device) * 0.2
         if sample_hidden is not None:
             reps = (B + sample_hidden.size(0) - 1) // sample_hidden.size(0)
@@ -699,10 +747,19 @@ class GR00TFastHead(FastHead):
             dummy_vl = (
                 torch.randn((B, channel.max_seq_len, channel.feature_dim), dtype=torch.bfloat16, device=device) * 0.5
             )
+        seq_t = torch.full((B,), eff_seq, dtype=torch.int32, device=device)
+        S = dummy_vl.size(1)
+        if eff_seq < S:
+            valid = torch.arange(S, device=device).view(1, S, 1) < seq_t.view(B, 1, 1)
+            dummy_vl = torch.where(valid, dummy_vl, torch.zeros_like(dummy_vl))
         dummy_noise = self.base_noise.expand(B, -1, -1)
-        dummy_pref = torch.zeros((B, min(8, self.chunk_size - 1), self.action_dim), dtype=torch.bfloat16, device=device)
+        p_len = min(8, self.chunk_size - 1) if self.rtc_conditioning_supported else 0
+        dummy_pref = torch.zeros((B, p_len, self.action_dim), dtype=torch.bfloat16, device=device)
         calibrate_fp8_submodules(
-            self, lambda: self.forward_with_noise(dummy_obs, dummy_vl, dummy_noise, frozen_prefix=dummy_pref)
+            self,
+            lambda: self.forward_with_noise(
+                dummy_obs, dummy_vl, dummy_noise, frozen_prefix=dummy_pref, seq_lens=seq_t
+            ),
         )
 
     def _encode_dit_timestep(self, t_disc: int, batch_size: int, device: torch.device) -> torch.Tensor:
@@ -729,11 +786,20 @@ class GR00TFastHead(FastHead):
         *,
         frozen_prefix: Optional[torch.Tensor] = None,
         prefix_valid: Optional[torch.Tensor] = None,
+        seq_lens: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         B = fast_obs.size(0)
         cat = self.embodiment_id
         state_tok = self.state_fc2(F.relu(self.state_fc1(fast_obs.unsqueeze(1), cat)), cat)
         fut_tok = self.future_tokens.weight.unsqueeze(0).expand(B, -1, -1)
+
+        S = vl_embs.size(1)
+        cross_mask = (
+            torch.arange(S, device=vl_embs.device).view(1, 1, 1, S)
+            < seq_lens.to(torch.int64).clamp(1, S).view(B, 1, 1, 1)
+            if seq_lens is not None
+            else None
+        )
 
         # Pre-project static Slow VL hidden features once across all 4 Euler steps
         cross_kvs: List[Optional[Tuple[torch.Tensor, torch.Tensor]]] = [
@@ -752,7 +818,7 @@ class GR00TFastHead(FastHead):
             h = torch.cat([state_tok, fut_tok, act_feats], dim=1)
 
             for idx, blk in enumerate(self.blocks):
-                h = blk(h, temb, cross_kvs[idx])
+                h = blk(h, temb, cross_kvs[idx], cross_mask if blk.is_cross_attn else None)
 
             shift, scale = self.proj_out_1(F.silu(temb)).chunk(2, dim=-1)
             h_norm = (
@@ -768,7 +834,12 @@ class GR00TFastHead(FastHead):
                     torch.bfloat16
                 )
                 if prefix_valid is not None:
-                    inpaint = torch.where(prefix_valid.view(-1, 1, 1), inpaint, actions[:, :P_len])
+                    if prefix_valid.ndim != 1 or prefix_valid.size(0) != B:
+                        raise ValueError(
+                            f"prefix_valid must have 1D shape [B={B}], got {tuple(prefix_valid.shape)}"
+                        )
+                    mask = prefix_valid.view(B, *([1] * (inpaint.ndim - 1)))
+                    inpaint = torch.where(mask, inpaint, actions[:, :P_len])
                 actions = torch.cat([inpaint, actions[:, P_len:]], dim=1)
 
         return actions
@@ -786,7 +857,12 @@ class GR00TFastHead(FastHead):
         vl_embs, _delta_sec = state.read_hidden()
         noise = self.base_noise.expand(fast_obs.size(0), -1, -1)
         return self.forward_with_noise(
-            fast_obs, vl_embs, noise, frozen_prefix=frozen_prefix, prefix_valid=state.prefix_valid
+            fast_obs,
+            vl_embs,
+            noise,
+            frozen_prefix=frozen_prefix,
+            prefix_valid=state.prefix_valid,
+            seq_lens=state.seq_lens,
         )
 
 
@@ -848,6 +924,7 @@ def build_gr00t(
                 slow_replicas.append(stages)
 
             ch_cal = slow_replicas[0][0].channel  # type: ignore[attr-defined]
+            cal_seq_len = slow_replicas[0][0].get_stream_prompt_meta(0)[0]  # type: ignore[attr-defined]
             sample_hidden = (
                 capture_slow_calibration_sample(
                     slow_replicas[0], ch_cal, (cfg.num_cameras, 3, cfg.image_size, cfg.image_size)
@@ -860,7 +937,7 @@ def build_gr00t(
                 head = GR00TFastHead(cfg, device=f_dev)
                 head.load_weights(loader, f_dev)
                 head.eval()
-                head.calibrate_fp8(ch_cal, f_dev, sample_hidden=sample_hidden)
+                head.calibrate_fp8(ch_cal, f_dev, sample_hidden=sample_hidden, sample_seq_len=cal_seq_len)
                 fast_shards.append(head)
 
             loader.verify_all_consumed(
@@ -888,6 +965,7 @@ def build_gr00t(
             slow_replicas.append(stages)
 
         ch_cal = slow_replicas[0][0].channel  # type: ignore[attr-defined]
+        cal_seq_len = slow_replicas[0][0].get_stream_prompt_meta(0)[0]  # type: ignore[attr-defined]
         sample_hidden = (
             capture_slow_calibration_sample(
                 slow_replicas[0], ch_cal, (cfg.num_cameras, 3, cfg.image_size, cfg.image_size)
@@ -899,7 +977,7 @@ def build_gr00t(
             f_dev = torch.device(f"cuda:{int(dev_id)}")
             head = GR00TFastHead(cfg, device=f_dev)
             head.eval()
-            head.calibrate_fp8(ch_cal, f_dev, sample_hidden=sample_hidden)
+            head.calibrate_fp8(ch_cal, f_dev, sample_hidden=sample_hidden, sample_seq_len=cal_seq_len)
             fast_shards.append(head)
 
     ch = slow_replicas[0][0].channel  # type: ignore[attr-defined]
@@ -912,6 +990,7 @@ def build_gr00t(
         slow_obs_shape=(cfg.num_cameras, 3, cfg.image_size, cfg.image_size),
         fast_obs_shape=(cfg.state_dim,),
         fast_obs_is_noise=bool(fast_shards[0].fast_obs_is_noise),
+        rtc_conditioning_supported=bool(fast_shards[0].rtc_conditioning_supported),
         step_dt_ms=fast_shards[0].resolve_step_dt_ms(),
         max_q_len=max(64, 1 + cfg.num_future_tokens + cfg.chunk_size),
         max_q_heads=cfg.dit_heads,

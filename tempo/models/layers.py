@@ -157,6 +157,9 @@ class _SlowCalibrationCapture:
         self.k_layers: List[Optional[torch.Tensor]] = [None] * layers
         self.v_layers: List[Optional[torch.Tensor]] = [None] * layers
         self.hidden: Optional[torch.Tensor] = None
+        self.prompt_slot_ids: Optional[torch.Tensor] = None
+        self.seq_lens: Optional[torch.Tensor] = None
+        self._probe_mode: bool = False
 
     def write_layer_kv(self, layer_idx: int, k: torch.Tensor, v: torch.Tensor) -> None:
         self.k_layers[layer_idx] = k.detach()
@@ -176,9 +179,20 @@ def capture_slow_calibration_sample(
     """Runs one synthetic observation batch through Slow stages to capture realistic KV/Hidden magnitudes."""
     first_t = next(itertools.chain(slow_stages[0].parameters(), slow_stages[0].buffers()))
     x = torch.rand((batch_size, *obs_shape), dtype=torch.bfloat16, device=first_t.device).contiguous()
+    s0 = slow_stages[0]
+    if hasattr(s0, "get_stream_prompt_meta"):
+        cal_seq_len, active_row = s0.get_stream_prompt_meta(0)  # type: ignore[operator]
+    else:
+        cal_seq_len, active_row = channel.max_seq_len, 0
     cap = _SlowCalibrationCapture(channel.layers)
+    cap.prompt_slot_ids = torch.full((batch_size,), int(active_row), dtype=torch.int64, device=first_t.device)
+    cap.seq_lens = torch.full((batch_size,), int(cal_seq_len), dtype=torch.int32, device=first_t.device)
     for stg in slow_stages:
         stg_t = next(itertools.chain(stg.parameters(), stg.buffers()))
+        if cap.prompt_slot_ids is not None and cap.prompt_slot_ids.device != stg_t.device:
+            cap.prompt_slot_ids = cap.prompt_slot_ids.to(device=stg_t.device)
+        if cap.seq_lens is not None and cap.seq_lens.device != stg_t.device:
+            cap.seq_lens = cap.seq_lens.to(device=stg_t.device)
         x = stg(x.to(device=stg_t.device, dtype=torch.bfloat16), cap)
     if channel.mode == "kv":
         if any(t is None for t in cap.k_layers) or any(t is None for t in cap.v_layers):
@@ -616,9 +630,10 @@ class DirectActionHead(FastHead):
         B = fast_obs.size(0)
         P_len = frozen_prefix.size(1)
         x = self.query_embed.unsqueeze(0) + self.state_proj(fast_obs).unsqueeze(1)
-        # Condition prefix tokens directly on in-flight frozen_prefix when active
-        pref_cond = state.splice_prefix(torch.zeros_like(x[:, :P_len]), self.prefix_proj(frozen_prefix))
-        x = torch.cat([x[:, :P_len] + pref_cond, x[:, P_len:]], dim=1)
+        if P_len > 0:
+            # Condition prefix tokens directly on in-flight frozen_prefix when active
+            pref_cond = state.splice_prefix(torch.zeros_like(x[:, :P_len]), self.prefix_proj(frozen_prefix))
+            x = torch.cat([x[:, :P_len] + pref_cond, x[:, P_len:]], dim=1)
 
         sem_hidden = state.read_hidden()[0] if self.mode == "hidden" else None
         for idx, blk in enumerate(self.blocks):
@@ -629,13 +644,23 @@ class DirectActionHead(FastHead):
                 attn_out = state.cross_attend(q, layer_id)
             else:
                 assert sem_hidden is not None
-                kv = blk["kv_proj"](sem_hidden).view(B, -1, 2, self.num_q_heads, self.head_dim)
+                S_hid = sem_hidden.size(1)
+                kv = blk["kv_proj"](sem_hidden).view(B, S_hid, 2, self.num_q_heads, self.head_dim)
+                hid_mask = (
+                    torch.arange(S_hid, device=sem_hidden.device).view(1, 1, 1, S_hid)
+                    < state.seq_lens.to(torch.int64).clamp(1, S_hid).view(B, 1, 1, 1)
+                )
                 attn_out = F.scaled_dot_product_attention(
-                    q.transpose(1, 2), kv[:, :, 0].transpose(1, 2), kv[:, :, 1].transpose(1, 2)
+                    q.transpose(1, 2),
+                    kv[:, :, 0].transpose(1, 2),
+                    kv[:, :, 1].transpose(1, 2),
+                    attn_mask=hid_mask,
                 ).transpose(1, 2)
             x = x + blk["o_proj"](attn_out.reshape(B, self.chunk_size, -1))
             h2 = F.silu(blk["fc1"](blk["norm2"](x)))
             x = x + blk["fc2"](h2)
 
         pred = self.out_proj(self.final_norm(x))
-        return torch.cat([state.splice_prefix(pred[:, :P_len], frozen_prefix), pred[:, P_len:]], dim=1)
+        if P_len > 0:
+            return torch.cat([state.splice_prefix(pred[:, :P_len], frozen_prefix), pred[:, P_len:]], dim=1)
+        return pred

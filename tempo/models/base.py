@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+import threading
+from typing import Any, Callable, ContextManager, Dict, List, Optional, Sequence, Tuple, Union
+import weakref
 
 import torch
 import torch.nn as nn
@@ -11,6 +14,34 @@ import torch.nn as nn
 from ..channel import SemanticStateView, SlowCaptureContext, TemporalChannel
 
 VALID_FAST_PRECISIONS: Tuple[str, ...] = ("bf16", "fp8")
+PROMPT_SLOTS_PER_STREAM: int = 4
+_PROMPT_LOCK_GUARD = threading.Lock()
+_PROMPT_STREAMS: Dict[torch.device, Tuple[torch.cuda.Stream, threading.Lock]] = {}
+_STAGE_STREAM_LOCKS: "weakref.WeakKeyDictionary[nn.Module, Dict[int, threading.RLock]]" = weakref.WeakKeyDictionary()
+
+
+def _get_prompt_cuda_stream(dev: torch.device) -> Optional[Tuple[torch.cuda.Stream, threading.Lock]]:
+    if dev.type != "cuda":
+        return None
+    with _PROMPT_LOCK_GUARD:
+        entry = _PROMPT_STREAMS.get(dev)
+        if entry is None:
+            entry = (torch.cuda.Stream(device=dev), threading.Lock())
+            _PROMPT_STREAMS[dev] = entry
+        return entry
+
+
+def _get_stage_stream_lock(stage: nn.Module, stream_id: int) -> threading.RLock:
+    with _PROMPT_LOCK_GUARD:
+        per_stream = _STAGE_STREAM_LOCKS.get(stage)
+        if per_stream is None:
+            per_stream = {}
+            _STAGE_STREAM_LOCKS[stage] = per_stream
+        lk = per_stream.get(stream_id)
+        if lk is None:
+            lk = threading.RLock()
+            per_stream[stream_id] = lk
+        return lk
 
 
 def validate_fast_precision(fast_precision: str) -> str:
@@ -30,6 +61,167 @@ class SlowBackbone(nn.Module):
 
     channel: TemporalChannel
     obs_shape: Tuple[int, ...]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._stream_prompt_meta: List[Tuple[int, int]] = []
+
+    def _init_prompt_ring(
+        self,
+        prompt_len: int,
+        embed_dim: int,
+        default_seq_len: int,
+        device: torch.device,
+    ) -> None:
+        # 4-slot Pigeonhole ring per stream:
+        # (1 active + 1 pending in mailbox + 1 in-flight on GPU + 1 guaranteed free write slot)
+        self.register_buffer(
+            "lang_embeds",
+            torch.zeros(
+                (PROMPT_SLOTS_PER_STREAM, prompt_len, embed_dim),
+                dtype=torch.bfloat16,
+                device=device,
+            ),
+        )
+        self.register_buffer(
+            "stream_seq_lens_gpu",
+            torch.full((PROMPT_SLOTS_PER_STREAM,), int(default_seq_len), dtype=torch.int32, device=device),
+        )
+        self._stream_prompt_meta = [(int(default_seq_len), 0)]
+
+    @torch.no_grad()
+    def ensure_stream_capacity(self, num_streams: int) -> None:
+        if num_streams < 1:
+            raise ValueError(f"num_streams must be >= 1, got {num_streams}")
+        cur_cap = len(self._stream_prompt_meta)
+        if cur_cap == 0 or num_streams <= cur_cap:
+            return
+        extra = num_streams - cur_cap
+        s0_seq_len, s0_row = self._stream_prompt_meta[0]
+        base_emb = self.lang_embeds[s0_row : s0_row + 1].repeat(extra * PROMPT_SLOTS_PER_STREAM, 1, 1)  # type: ignore[index]
+        base_seq = self.stream_seq_lens_gpu[s0_row : s0_row + 1].repeat(extra * PROMPT_SLOTS_PER_STREAM)  # type: ignore[index]
+        self.register_buffer("lang_embeds", torch.cat([self.lang_embeds, base_emb], dim=0).contiguous())  # type: ignore[list-item]
+        self.register_buffer("stream_seq_lens_gpu", torch.cat([self.stream_seq_lens_gpu, base_seq], dim=0).contiguous())  # type: ignore[list-item]
+        for s in range(cur_cap, num_streams):
+            self._stream_prompt_meta.append((s0_seq_len, PROMPT_SLOTS_PER_STREAM * s))
+
+    def get_stream_prompt_meta(self, stream_id: int = 0) -> Tuple[int, int]:
+        cap = len(self._stream_prompt_meta)
+        if cap == 0:
+            return self.channel.frame_seq_len, stream_id
+        if stream_id < 0 or stream_id >= cap:
+            raise IndexError(f"stream_id {stream_id} out of range [0, {cap})")
+        return self._stream_prompt_meta[stream_id]
+
+    def stream_prompt_lock(self, stream_id: int = 0) -> ContextManager[None]:
+        if not self._stream_prompt_meta:
+            return contextlib.nullcontext()
+        return _get_stage_stream_lock(self, stream_id)
+
+    def _copy_prompt_to_device(
+        self,
+        emb: torch.Tensor,
+        valid_seq_len: int,
+        row: Optional[int],
+    ) -> None:
+        dev = self.lang_embeds.device  # type: ignore[union-attr]
+        st_entry = _get_prompt_cuda_stream(dev)
+        if st_entry is not None:
+            upd_st, dev_lk = st_entry
+            caller_st = torch.cuda.current_stream(emb.device) if emb.is_cuda else None
+            with dev_lk:
+                if caller_st is not None:
+                    upd_st.wait_stream(caller_st)
+                with torch.cuda.device(dev), torch.cuda.stream(upd_st):
+                    emb_dev = emb.to(device=dev, dtype=torch.bfloat16, non_blocking=True)
+                    if row is None:
+                        self.lang_embeds.copy_(emb_dev.unsqueeze(0).expand_as(self.lang_embeds))  # type: ignore[union-attr]
+                        self.stream_seq_lens_gpu.fill_(int(valid_seq_len))  # type: ignore[union-attr]
+                    else:
+                        self.lang_embeds[row].copy_(emb_dev, non_blocking=True)  # type: ignore[index]
+                        self.stream_seq_lens_gpu[row] = int(valid_seq_len)  # type: ignore[index]
+                upd_st.synchronize()
+        else:
+            emb_dev = emb.to(device=dev, dtype=torch.bfloat16)
+            if row is None:
+                self.lang_embeds.copy_(emb_dev.unsqueeze(0).expand_as(self.lang_embeds))  # type: ignore[union-attr]
+                self.stream_seq_lens_gpu.fill_(int(valid_seq_len))  # type: ignore[union-attr]
+            else:
+                self.lang_embeds[row].copy_(emb_dev)  # type: ignore[index]
+                self.stream_seq_lens_gpu[row] = int(valid_seq_len)  # type: ignore[index]
+
+    def _write_prompt_slot(
+        self,
+        emb: torch.Tensor,
+        valid_seq_len: int,
+        stream_id: Optional[int],
+        busy_rows: Tuple[int, int],
+    ) -> None:
+        cap = len(self._stream_prompt_meta)
+        if stream_id is not None:
+            if stream_id < 0 or stream_id >= cap:
+                raise IndexError(
+                    f"stream_id {stream_id} out of range [0, {cap}); call ensure_stream_capacity() before compilation"
+                )
+            with _get_stage_stream_lock(self, stream_id):
+                _, active_row = self._stream_prompt_meta[stream_id]
+                base = PROMPT_SLOTS_PER_STREAM * stream_id
+                forbidden = {active_row, int(busy_rows[0]), int(busy_rows[1])}
+                target_row = -1
+                for k in range(PROMPT_SLOTS_PER_STREAM):
+                    cand = base + k
+                    if cand not in forbidden:
+                        target_row = cand
+                        break
+                if target_row < 0:
+                    raise RuntimeError(
+                        f"No free prompt slot available for stream {stream_id} (forbidden={sorted(forbidden)})"
+                    )
+                self._copy_prompt_to_device(emb, valid_seq_len, target_row)
+                self._stream_prompt_meta[stream_id] = (int(valid_seq_len), target_row)
+            return
+
+        locks = [_get_stage_stream_lock(self, s) for s in range(cap)]
+        for lk in locks:
+            lk.acquire()
+        try:
+            self._copy_prompt_to_device(emb, valid_seq_len, None)
+            self._stream_prompt_meta = [
+                (int(valid_seq_len), PROMPT_SLOTS_PER_STREAM * s) for s in range(cap)
+            ]
+        finally:
+            for lk in reversed(locks):
+                lk.release()
+
+    def _resolve_prompt_slot_ids(
+        self,
+        B: int,
+        device: torch.device,
+        ctx: Optional[SlowCaptureContext] = None,
+    ) -> torch.Tensor:
+        if ctx is not None and bool(ctx._probe_mode):
+            return torch.zeros((B,), dtype=torch.int64, device=device)
+        cap = len(self._stream_prompt_meta)
+        if cap > 0 and ctx is not None and ctx.prompt_slot_ids is not None:
+            max_row = cap * PROMPT_SLOTS_PER_STREAM - 1
+            return ctx.prompt_slot_ids.to(device=device, dtype=torch.int64).clamp(0, max_row)
+        if cap <= 1:
+            row0 = self._stream_prompt_meta[0][1] if cap == 1 else 0
+            return torch.full((B,), int(row0), dtype=torch.int64, device=device)
+        if B > cap:
+            raise ValueError(
+                f"Batch size {B} exceeds configured stream capacity {cap}; call ensure_stream_capacity({B})"
+            )
+        rows = [self._stream_prompt_meta[s][1] for s in range(B)]
+        return torch.tensor(rows, dtype=torch.int64, device=device)
+
+    def _copy_prompt_ring_from(self, src: "SlowBackbone", device: torch.device) -> None:
+        if not src._stream_prompt_meta:
+            return
+        self.ensure_stream_capacity(len(src._stream_prompt_meta))
+        self.lang_embeds.copy_(src.lang_embeds.to(device))  # type: ignore[union-attr]
+        self.stream_seq_lens_gpu.copy_(src.stream_seq_lens_gpu.to(device))  # type: ignore[union-attr]
+        self._stream_prompt_meta = list(src._stream_prompt_meta)
 
     def forward(self, obs: torch.Tensor, ctx: SlowCaptureContext) -> object:
         raise NotImplementedError
@@ -60,6 +252,7 @@ class FastHead(nn.Module):
     chunk_size: int
     obs_shape: Tuple[int, ...]
     fast_obs_is_noise: bool = False
+    rtc_conditioning_supported: bool = True
     default_horizon_ms: float = 100.0
     default_step_dt_ms: Optional[float] = None
     max_q_len: int = 64
@@ -99,6 +292,7 @@ class DualSystemDeployment:
     slow_obs_shape: Tuple[int, ...]
     fast_obs_shape: Tuple[int, ...]
     fast_obs_is_noise: bool = False
+    rtc_conditioning_supported: bool = True
     step_dt_ms: float = 2.0
     max_q_len: int = 64
     max_q_heads: int = 32
@@ -160,6 +354,7 @@ def deploy_modules(
         slow_obs_shape=tuple(slow.obs_shape),
         fast_obs_shape=tuple(fast.obs_shape),
         fast_obs_is_noise=bool(fast.fast_obs_is_noise),
+        rtc_conditioning_supported=bool(fast.rtc_conditioning_supported),
         step_dt_ms=fast.resolve_step_dt_ms(),
         max_q_len=max(int(fast.chunk_size), int(fast.max_q_len)),
         max_q_heads=int(fast.max_q_heads),

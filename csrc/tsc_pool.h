@@ -125,7 +125,7 @@ class TemporalStateCache {
       const std::vector<int32_t>& stream_ids,
       const std::vector<int32_t>& dst_global_slots,
       const std::vector<int64_t>& t_obs_ns,
-      int32_t frame_seq_len,
+      const std::vector<int32_t>& frame_seq_lens,
       cudaStream_t push_stream,
       cudaEvent_t push_done_event);
 

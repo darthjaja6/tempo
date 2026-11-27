@@ -10,6 +10,9 @@
 #include <limits>
 #include <set>
 #include <stdexcept>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 namespace tempo {
 
@@ -212,6 +215,8 @@ TimeAwareScheduler::TimeAwareScheduler(
         TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&stg->act_out_copied_event, cudaEventDisableTiming));
         TS_SCHED_CUDA_CHECK(cudaEventCreateWithFlags(&stg->tsc_d2h_done_event, cudaEventDisableTiming));
         TS_SCHED_CUDA_CHECK(cudaMallocHost(&stg->h_slow_tobs, sizeof(int64_t) * slow_batch_size_));
+        TS_SCHED_CUDA_CHECK(cudaMallocHost(&stg->h_slow_stream_ids, sizeof(int32_t) * slow_batch_size_));
+        TS_SCHED_CUDA_CHECK(cudaMallocHost(&stg->h_slow_seqlens, sizeof(int32_t) * slow_batch_size_));
       }
       if (disaggregated_) {
         stg->p2p_push_streams.reserve(F);
@@ -282,6 +287,7 @@ TimeAwareScheduler::TimeAwareScheduler(
 
   for (int32_t s = 0; s < num_streams_; ++s) {
     auto ing = std::make_unique<StreamIngress>();
+    ing->slow_seq_len = slow_frame_seq_len_;
     ing->last_pub_slow_t_obs_ns = init_ns;
     ingress_.push_back(std::move(ing));
 
@@ -385,6 +391,8 @@ TimeAwareScheduler::~TimeAwareScheduler() {
         if (stg->act_out_copied_event) cudaEventDestroy(stg->act_out_copied_event);
         if (stg->tsc_d2h_done_event) cudaEventDestroy(stg->tsc_d2h_done_event);
         if (stg->h_slow_tobs) cudaFreeHost(stg->h_slow_tobs);
+        if (stg->h_slow_stream_ids) cudaFreeHost(stg->h_slow_stream_ids);
+        if (stg->h_slow_seqlens) cudaFreeHost(stg->h_slow_seqlens);
         for (void* ptr : stg->h_p2p_bounce) {
           if (ptr) cudaFreeHost(ptr);
         }
@@ -474,7 +482,9 @@ void TimeAwareScheduler::init_slow_stage(
     std::vector<torch::Tensor> act_out_static,
     torch::Tensor slow_pt_static,
     torch::Tensor slow_start_page_static,
-    torch::Tensor slow_tobs_static) {
+    torch::Tensor slow_tobs_static,
+    torch::Tensor slow_stream_ids_static,
+    torch::Tensor slow_seqlens_static) {
   if (replica_idx < 0 || replica_idx >= static_cast<int32_t>(slow_replicas_.size())) {
     throw std::out_of_range("replica_idx out of range");
   }
@@ -501,6 +511,8 @@ void TimeAwareScheduler::init_slow_stage(
   stg.slow_pt_static = std::move(slow_pt_static);
   stg.slow_start_page_static = std::move(slow_start_page_static);
   stg.slow_tobs_static = std::move(slow_tobs_static);
+  stg.slow_stream_ids_static = std::move(slow_stream_ids_static);
+  stg.slow_seqlens_static = std::move(slow_seqlens_static);
 
   if (stage_idx == 0) {
     c10::cuda::CUDAGuard sg(stg.device_id);
@@ -617,6 +629,7 @@ std::vector<double> TimeAwareScheduler::profile_slow_slices(
 
   cudaEventDestroy(ev0);
   cudaEventDestroy(ev1);
+
   if (!disaggregated_) {
     stg.slow_bucket_slice_shadow_ns[slow_bucket] = observed_max_ns;
     stg.runtime_slice_shadow_ns = stg.slow_bucket_slice_shadow_ns.begin()->second;
@@ -714,7 +727,24 @@ void TimeAwareScheduler::abort_active_captures() noexcept {
   }
 }
 
-void TimeAwareScheduler::submit_slow_obs(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& obs) {
+std::pair<int32_t, int32_t> TimeAwareScheduler::busy_slow_prompt_rows(int32_t stream_id) const {
+  if (stream_id < 0 || stream_id >= num_streams_) {
+    throw std::out_of_range("busy_slow_prompt_rows: stream_id out of range");
+  }
+  std::lock_guard<std::mutex> lk(ingress_[stream_id]->mu);
+  const int32_t busy_pending =
+      ingress_[stream_id]->slow_pending ? ingress_[stream_id]->pending_prompt_row : -1;
+  const int32_t busy_inflight =
+      ingress_[stream_id]->slow_inflight ? ingress_[stream_id]->inflight_prompt_row : -1;
+  return {busy_pending, busy_inflight};
+}
+
+void TimeAwareScheduler::submit_slow_obs(
+    int32_t stream_id,
+    int64_t t_obs_ns,
+    const torch::Tensor& obs,
+    int32_t seq_len,
+    int32_t prompt_row) {
   if (slow_replicas_.empty()) {
     throw std::logic_error("submit_slow_obs called on Fast-only scheduler without local Slow stage");
   }
@@ -723,6 +753,17 @@ void TimeAwareScheduler::submit_slow_obs(int32_t stream_id, int64_t t_obs_ns, co
   }
   if (!obs.is_contiguous() || obs.scalar_type() != torch::kBFloat16) {
     throw std::invalid_argument("submit_slow_obs requires contiguous bfloat16 tensor");
+  }
+  if (seq_len < 1 || seq_len > slow_frame_seq_len_) {
+    throw std::invalid_argument("submit_slow_obs seq_len out of range [1, slow_frame_seq_len]");
+  }
+  const auto& f_tsc = fast_shards_[fast_shard_of_[stream_id]]->tsc;
+  if (f_tsc && seq_len < slow_frame_seq_len_ && f_tsc->max_seq_len() > slow_frame_seq_len_) {
+    throw std::invalid_argument(
+        "submit_slow_obs: variable seq_len < slow_frame_seq_len is unsupported when window_frames > 1");
+  }
+  if (prompt_row < 0) {
+    throw std::invalid_argument("submit_slow_obs prompt_row must be >= 0");
   }
   const int32_t r = slow_replica_of_[stream_id];
   const int32_t local_s = local_slow_id_[stream_id];
@@ -791,17 +832,13 @@ void TimeAwareScheduler::submit_slow_obs(int32_t stream_id, int64_t t_obs_ns, co
     std::lock_guard<std::mutex> tlk(telem_mu_);
     telem_.slow_coalesced_drops++;
   }
+  ingress_[stream_id]->pending_prompt_row = prompt_row;
   ingress_[stream_id]->slow_pending = true;
   ingress_[stream_id]->slow_t_obs_ns = t_obs_ns;
+  ingress_[stream_id]->slow_seq_len = seq_len;
 }
 
-void TimeAwareScheduler::submit_fast_obs(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& fast_obs) {
-  if (stream_id < 0 || stream_id >= num_streams_) {
-    throw std::out_of_range("stream_id out of range");
-  }
-  if (!fast_obs.is_contiguous() || fast_obs.scalar_type() != torch::kBFloat16) {
-    throw std::invalid_argument("submit_fast_obs requires contiguous bfloat16 tensor");
-  }
+void TimeAwareScheduler::ingest_fast_obs_locked(int32_t stream_id, const torch::Tensor& fast_obs) {
   const int32_t f = fast_shard_of_[stream_id];
   const int32_t local_s = local_fast_id_[stream_id];
   auto& fs = *fast_shards_[f];
@@ -814,7 +851,6 @@ void TimeAwareScheduler::submit_fast_obs(int32_t stream_id, int64_t t_obs_ns, co
   }
   const size_t bytes = fs.per_stream_fast_obs[local_s].nbytes();
 
-  std::lock_guard<std::mutex> lk(ingress_[stream_id]->mu);
   if (fast_obs.is_cuda() && fast_obs.get_device() == dst_dev) {
     c10::cuda::CUDAGuard dev_guard(dst_dev);
     cudaStream_t caller_st = at::cuda::getCurrentCUDAStream(dst_dev).stream();
@@ -865,7 +901,17 @@ void TimeAwareScheduler::submit_fast_obs(int32_t stream_id, int64_t t_obs_ns, co
     TS_SCHED_CUDA_CHECK(cudaEventRecord(fs.fast_ingest_events[local_s], fs.ingest_stream.stream()));
     TS_SCHED_CUDA_CHECK(cudaEventSynchronize(fs.fast_ingest_events[local_s]));
   }
+}
 
+void TimeAwareScheduler::submit_fast_obs(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& fast_obs) {
+  if (stream_id < 0 || stream_id >= num_streams_) {
+    throw std::out_of_range("stream_id out of range");
+  }
+  if (!fast_obs.is_contiguous() || fast_obs.scalar_type() != torch::kBFloat16) {
+    throw std::invalid_argument("submit_fast_obs requires contiguous bfloat16 tensor");
+  }
+  std::lock_guard<std::mutex> lk(ingress_[stream_id]->mu);
+  ingest_fast_obs_locked(stream_id, fast_obs);
   if (ingress_[stream_id]->fast_pending) {
     std::lock_guard<std::mutex> tlk(telem_mu_);
     telem_.fast_coalesced_drops++;
@@ -874,6 +920,49 @@ void TimeAwareScheduler::submit_fast_obs(int32_t stream_id, int64_t t_obs_ns, co
   }
   ingress_[stream_id]->fast_pending = true;
   ingress_[stream_id]->fast_t_obs_ns = t_obs_ns;
+}
+
+void TimeAwareScheduler::submit_fast_obs_batch(
+    const std::vector<int32_t>& stream_ids, int64_t t_obs_ns, const torch::Tensor& fast_obs_batch) {
+  const int32_t B = static_cast<int32_t>(stream_ids.size());
+  if (B <= 0) return;
+  if (!fast_obs_batch.is_contiguous() || fast_obs_batch.scalar_type() != torch::kBFloat16 ||
+      fast_obs_batch.dim() < 1 || fast_obs_batch.size(0) != B) {
+    throw std::invalid_argument("submit_fast_obs_batch requires contiguous bfloat16 tensor with leading dim B");
+  }
+  std::vector<int32_t> sorted_unique = stream_ids;
+  for (int32_t s : sorted_unique) {
+    if (s < 0 || s >= num_streams_) {
+      throw std::out_of_range("stream_id out of range in submit_fast_obs_batch");
+    }
+  }
+  std::sort(sorted_unique.begin(), sorted_unique.end());
+  sorted_unique.erase(std::unique(sorted_unique.begin(), sorted_unique.end()), sorted_unique.end());
+
+  std::vector<std::unique_lock<std::mutex>> locks;
+  locks.reserve(sorted_unique.size());
+  for (int32_t s : sorted_unique) {
+    locks.emplace_back(ingress_[s]->mu);
+  }
+
+  uint64_t drops = 0;
+  for (int32_t i = 0; i < B; ++i) {
+    const int32_t s = stream_ids[i];
+    ingest_fast_obs_locked(s, fast_obs_batch[i]);
+    if (ingress_[s]->fast_pending) {
+      drops++;
+    } else {
+      ingress_[s]->fast_wait_since_ns = t_obs_ns;
+    }
+    ingress_[s]->fast_pending = true;
+    ingress_[s]->fast_t_obs_ns = t_obs_ns;
+  }
+  locks.clear();
+
+  if (drops > 0) {
+    std::lock_guard<std::mutex> tlk(telem_mu_);
+    telem_.fast_coalesced_drops += drops;
+  }
 }
 
 bool TimeAwareScheduler::submit_remote_hidden(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& hidden) {
@@ -995,6 +1084,7 @@ void TimeAwareScheduler::abort_packet_writes(SlowReplica& /*rep*/, PipelinePacke
   for (int32_t g_s : pkt.global_ids) {
     std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
     ingress_[g_s]->slow_inflight = false;
+    ingress_[g_s]->inflight_prompt_row = -1;
   }
 }
 
@@ -1128,6 +1218,8 @@ void TimeAwareScheduler::reset_all_streams(c10::optional<torch::Tensor> init_pos
     std::lock_guard<std::mutex> lk(ingress_[s]->mu);
     ingress_[s]->slow_pending = false;
     ingress_[s]->slow_inflight = false;
+    ingress_[s]->inflight_prompt_row = -1;
+    ingress_[s]->pending_prompt_row = -1;
     ingress_[s]->slow_t_obs_ns = 0;
     ingress_[s]->expected_slow_t_obs_ns = 0;
     ingress_[s]->fast_pending = false;
@@ -1475,7 +1567,13 @@ void TimeAwareScheduler::execute_fast_batch(
   auto prefix_slice = fs.fast_prefix_static.slice(0, 0, chosen_bucket);
   auto prefix_valid_slice = fs.fast_prefix_valid_static.slice(0, 0, chosen_bucket);
   fs.rtc->extract_frozen_prefix(
-      fs.d_fast_local_ids, fs.d_fast_tobs, take_fast_count, prefix_slice, prefix_valid_slice, raw_exec);
+      fs.d_fast_local_ids,
+      fs.d_fast_tobs,
+      fs.d_fast_slow_tobs,
+      take_fast_count,
+      prefix_slice,
+      prefix_valid_slice,
+      raw_exec);
 
   fs.fast_bucket_graphs[chosen_bucket]->replay();
   fs.tsc->release_read_batch(/*reader_id=*/0, pinned_slots, raw_exec);
@@ -1536,6 +1634,9 @@ void TimeAwareScheduler::execute_fast_batch(
 }
 
 void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
+#ifdef __linux__
+  prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
+#endif
   auto& fs = *fast_shards_[shard_idx];
   auto& rep = *slow_replicas_[shard_idx];
   auto& stg = *rep.stages[0];
@@ -1556,6 +1657,7 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
   std::vector<int32_t> active_slow_global_ids;
   std::vector<int32_t> active_slow_local_ids;
   std::vector<int64_t> active_slow_tobs;
+  std::vector<int32_t> active_slow_seqlens;
   std::vector<int32_t> active_slow_global_slots;
   int32_t real_slow_count = 0;
 
@@ -1589,11 +1691,13 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
         for (int32_t i = 0; i < real_slow_count; ++i) {
           const int32_t l_s = active_slow_local_ids[i];
           const int32_t g_s = active_slow_global_ids[i];
-          fs.tsc->publish_write(l_s, active_slow_global_slots[i], active_slow_tobs[i], slow_frame_seq_len_, raw_exec);
+          fs.tsc->publish_write(
+              l_s, active_slow_global_slots[i], active_slow_tobs[i], active_slow_seqlens[i], raw_exec);
           {
             std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
             dropped_fast += mark_slow_published_locked(*ingress_[g_s], active_slow_tobs[i], pub_now);
             ingress_[g_s]->slow_inflight = false;
+            ingress_[g_s]->inflight_prompt_row = -1;
           }
         }
         {
@@ -1638,6 +1742,19 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
       }
     }
 
+    const auto select_slow_bucket = [&](int32_t pending_cnt, bool has_cold) -> int32_t {
+      const int32_t capped = std::min(pending_cnt, slow_batch_size_);
+      int32_t bkt = stg.sorted_slow_buckets.front();
+      if (has_cold || pending_cnt >= slow_batch_size_) {
+        for (int32_t b_s : stg.sorted_slow_buckets) {
+          if (b_s <= capped) {
+            bkt = b_s;
+          }
+        }
+      }
+      return bkt;
+    };
+
     const bool slow_work_present = (slow_batch_active || any_slow_pending);
     bool launch_fast_now = false;
     bool allow_slow_slice = slow_work_present;
@@ -1647,26 +1764,29 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
     if (pending_fast.empty()) {
       consec_slow_slices = 0;
     } else {
+      constexpr int64_t kPreemptGuardNs = 800000;
+      constexpr int64_t kMaxCoalesceWindowNs = 1800000;
+
       const auto plan = plan_fast_batch(fs, pending_fast, now_ns);
       take_fast_count = plan.take_fast_count;
       chosen_bucket = plan.chosen_bucket;
 
       const int64_t cur_exec_ns = fs.runtime_bucket_exec_ns[chosen_bucket];
-      const int64_t slice_guard_ns = stg.runtime_slice_shadow_ns + 1050000;
-      const int64_t coalesce_window_ns = std::min<int64_t>(1800000, fast_deadline_ns_ / 12);
-      const bool want_more_batch_or_slow =
-          (local_n > 1 && take_fast_count < plan.upper_cap) || (worst_slow_aoi_ns > max_slow_aoi_ns_);
+      const int64_t slice_guard_ns = stg.runtime_slice_shadow_ns + kPreemptGuardNs;
+      const int64_t coalesce_window_ns = std::min<int64_t>(kMaxCoalesceWindowNs, fast_deadline_ns_ / 12);
+      const bool want_more_fast_batch = (local_n > 1 && take_fast_count < plan.upper_cap);
 
-      if (slow_work_present && want_more_batch_or_slow &&
+      if (slow_work_present && want_more_fast_batch &&
           cur_exec_ns + slice_guard_ns <= plan.remaining_budget_ns) {
         launch_fast_now = false;
         allow_slow_slice = true;
-      } else if (slow_work_present && worst_slow_aoi_ns > 2 * max_slow_aoi_ns_ && consec_slow_slices < 1) {
+      } else if (slow_work_present && worst_slow_aoi_ns > max_slow_aoi_ns_ && consec_slow_slices < 1 &&
+                 cur_exec_ns + slice_guard_ns <= plan.remaining_budget_ns) {
         launch_fast_now = false;
         allow_slow_slice = true;
-      } else if (!slow_work_present && local_n > 1 && take_fast_count < plan.upper_cap &&
+      } else if (!slow_work_present && want_more_fast_batch &&
                  (now_ns - pending_fast[0].wait_since_ns) < coalesce_window_ns &&
-                 cur_exec_ns + 1500000 <= plan.remaining_budget_ns) {
+                 cur_exec_ns + 2 * kPreemptGuardNs <= plan.remaining_budget_ns) {
         launch_fast_now = false;
         allow_slow_slice = false;
       } else {
@@ -1711,20 +1831,13 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
           return a.t_obs_ns < b.t_obs_ns;
         });
         const int32_t capped_slow = std::min(static_cast<int32_t>(cands.size()), slow_batch_size_);
-        const bool prefer_throughput_batch = cands[0].cold_start || cands.size() >= 4;
-        active_slow_bucket = stg.sorted_slow_buckets.front();
-        if (prefer_throughput_batch) {
-          for (int32_t b_s : stg.sorted_slow_buckets) {
-            if (b_s <= capped_slow) {
-              active_slow_bucket = b_s;
-            }
-          }
-        }
+        active_slow_bucket = select_slow_bucket(static_cast<int32_t>(cands.size()), cands[0].cold_start);
         real_slow_count = std::min(capped_slow, active_slow_bucket);
 
         active_slow_global_ids.assign(active_slow_bucket, cands[0].global_id);
         active_slow_local_ids.assign(active_slow_bucket, cands[0].local_id);
         active_slow_tobs.assign(active_slow_bucket, cands[0].t_obs_ns);
+        active_slow_seqlens.assign(active_slow_bucket, slow_frame_seq_len_);
         active_slow_global_slots.assign(active_slow_bucket, -1);
 
         while (true) {
@@ -1744,7 +1857,12 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
 
           std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
           active_slow_tobs[i] = ingress_[g_s]->slow_t_obs_ns;
+          active_slow_seqlens[i] = ingress_[g_s]->slow_seq_len;
+          const int32_t picked_row = ingress_[g_s]->pending_prompt_row;
+          ingress_[g_s]->inflight_prompt_row = picked_row;
           stg.h_slow_tobs[i] = active_slow_tobs[i];
+          stg.h_slow_stream_ids[i] = picked_row;
+          stg.h_slow_seqlens[i] = active_slow_seqlens[i];
           ingress_[g_s]->slow_pending = false;
           ingress_[g_s]->slow_inflight = true;
           TS_SCHED_CUDA_CHECK(cudaStreamWaitEvent(raw_exec, rep.slow_ingest_events[l_s], 0));
@@ -1779,12 +1897,26 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
           stg.slow_start_page_static.slice(0, real_slow_count, active_slow_bucket).zero_();
           for (int32_t i = real_slow_count; i < active_slow_bucket; ++i) {
             stg.h_slow_tobs[i] = stg.h_slow_tobs[0];
+            stg.h_slow_stream_ids[i] = stg.h_slow_stream_ids[0];
+            stg.h_slow_seqlens[i] = stg.h_slow_seqlens[0];
           }
         }
         TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
             stg.slow_tobs_static.data_ptr<int64_t>(),
             stg.h_slow_tobs,
             sizeof(int64_t) * active_slow_bucket,
+            cudaMemcpyHostToDevice,
+            raw_exec));
+        TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
+            stg.slow_stream_ids_static.data_ptr<int32_t>(),
+            stg.h_slow_stream_ids,
+            sizeof(int32_t) * active_slow_bucket,
+            cudaMemcpyHostToDevice,
+            raw_exec));
+        TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
+            stg.slow_seqlens_static.data_ptr<int32_t>(),
+            stg.h_slow_seqlens,
+            sizeof(int32_t) * active_slow_bucket,
             cudaMemcpyHostToDevice,
             raw_exec));
         TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.tobs_h2d_done_event, raw_exec));
@@ -1820,12 +1952,16 @@ void TimeAwareScheduler::colocated_shard_loop(int32_t shard_idx) {
       const int32_t g_s = active_slow_global_ids[i];
       std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
       ingress_[g_s]->slow_inflight = false;
+      ingress_[g_s]->inflight_prompt_row = -1;
     }
     slow_batch_active = false;
   }
 }
 
 void TimeAwareScheduler::fast_disagg_shard_loop(int32_t shard_idx) {
+#ifdef __linux__
+  prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
+#endif
   auto& fs = *fast_shards_[shard_idx];
   c10::cuda::CUDAGuard fg(fs.device_id);
   c10::cuda::CUDAStreamGuard guard(fs.exec_stream);
@@ -1873,6 +2009,9 @@ void TimeAwareScheduler::fast_disagg_shard_loop(int32_t shard_idx) {
 }
 
 void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t stage_idx) {
+#ifdef __linux__
+  prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
+#endif
   auto& rep = *slow_replicas_[replica_idx];
   auto& stg = *rep.stages[stage_idx];
   const int32_t F = static_cast<int32_t>(fast_shards_.size());
@@ -1943,9 +2082,12 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
       pkt.global_ids.resize(real_cnt);
       pkt.local_slow_ids.resize(real_cnt);
       pkt.tobs_ns.resize(real_cnt);
+      pkt.seqlens.resize(real_cnt);
+      pkt.prompt_slot_ids.resize(real_cnt);
       pkt.shard_local_fast_ids.resize(F);
       pkt.shard_dst_slots.resize(F);
       pkt.shard_tobs_ns.resize(F);
+      pkt.shard_seqlens.resize(F);
       pkt.shard_prev_p2p_ev.assign(F, nullptr);
 
       c10::cuda::CUDAGuard sg(stg.device_id);
@@ -1961,8 +2103,14 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
 
         std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
         const int64_t picked_tobs_ns = ingress_[g_s]->slow_t_obs_ns;
+        const int32_t picked_seq_len = ingress_[g_s]->slow_seq_len;
+        const int32_t picked_row = ingress_[g_s]->pending_prompt_row;
+        ingress_[g_s]->inflight_prompt_row = picked_row;
         pkt.tobs_ns[i] = picked_tobs_ns;
+        pkt.seqlens[i] = picked_seq_len;
+        pkt.prompt_slot_ids[i] = picked_row;
         pkt.shard_tobs_ns[f].push_back(picked_tobs_ns);
+        pkt.shard_seqlens[f].push_back(picked_seq_len);
         ingress_[g_s]->slow_pending = false;
         ingress_[g_s]->slow_inflight = true;
         TS_SCHED_CUDA_CHECK(cudaStreamWaitEvent(raw_exec, rep.slow_ingest_events[l_s], 0));
@@ -2028,31 +2176,49 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
         auto tmp_start_gpu = stg.slow_start_page_static.slice(0, 0, pkt.real_slow_count);
         stg.slow_tsc->prepare_write_batch(
             pkt.local_slow_ids, slow_frame_seq_len_, tmp_pt_gpu, tmp_start_gpu, src_slots, raw_exec);
-
-        while (true) {
-          cudaError_t st = cudaEventQuery(stg.tobs_h2d_done_event);
-          if (st == cudaSuccess) break;
-          if (st != cudaErrorNotReady) TS_SCHED_CUDA_CHECK(st);
-          std::this_thread::sleep_for(std::chrono::microseconds(15));
-        }
-        for (int32_t i = 0; i < pkt.real_slow_count; ++i) {
-          stg.h_slow_tobs[i] = pkt.tobs_ns[i];
-        }
         if (pkt.real_slow_count < pkt.chosen_slow_bkt) {
           stg.slow_pt_static.slice(0, pkt.real_slow_count, pkt.chosen_slow_bkt).fill_(-1);
           stg.slow_start_page_static.slice(0, pkt.real_slow_count, pkt.chosen_slow_bkt).zero_();
-          for (int32_t i = pkt.real_slow_count; i < pkt.chosen_slow_bkt; ++i) {
-            stg.h_slow_tobs[i] = stg.h_slow_tobs[0];
-          }
         }
+      }
+
+      while (true) {
+        cudaError_t st = cudaEventQuery(stg.tobs_h2d_done_event);
+        if (st == cudaSuccess) break;
+        if (st != cudaErrorNotReady) TS_SCHED_CUDA_CHECK(st);
+        std::this_thread::sleep_for(std::chrono::microseconds(15));
+      }
+      for (int32_t i = 0; i < pkt.real_slow_count; ++i) {
+        stg.h_slow_tobs[i] = pkt.tobs_ns[i];
+        stg.h_slow_stream_ids[i] = pkt.prompt_slot_ids[i];
+        stg.h_slow_seqlens[i] = pkt.seqlens[i];
+      }
+      for (int32_t i = pkt.real_slow_count; i < pkt.chosen_slow_bkt; ++i) {
+        stg.h_slow_tobs[i] = stg.h_slow_tobs[0];
+        stg.h_slow_stream_ids[i] = stg.h_slow_stream_ids[0];
+        stg.h_slow_seqlens[i] = stg.h_slow_seqlens[0];
+      }
+      if (stg.has_tsc_writes) {
         TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
             stg.slow_tobs_static.data_ptr<int64_t>(),
             stg.h_slow_tobs,
             sizeof(int64_t) * pkt.chosen_slow_bkt,
             cudaMemcpyHostToDevice,
             raw_exec));
-        TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.tobs_h2d_done_event, raw_exec));
       }
+      TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
+          stg.slow_stream_ids_static.data_ptr<int32_t>(),
+          stg.h_slow_stream_ids,
+          sizeof(int32_t) * pkt.chosen_slow_bkt,
+          cudaMemcpyHostToDevice,
+          raw_exec));
+      TS_SCHED_CUDA_CHECK(cudaMemcpyAsync(
+          stg.slow_seqlens_static.data_ptr<int32_t>(),
+          stg.h_slow_seqlens,
+          sizeof(int32_t) * pkt.chosen_slow_bkt,
+          cudaMemcpyHostToDevice,
+          raw_exec));
+      TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.tobs_h2d_done_event, raw_exec));
 
       const int64_t stg_start_logical_ns = this->now_ns();
       TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.slice_start_event, raw_exec));
@@ -2064,7 +2230,7 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
       if (stg.has_tsc_writes) {
         for (int32_t i = 0; i < pkt.real_slow_count; ++i) {
           stg.slow_tsc->publish_write(
-              pkt.local_slow_ids[i], src_slots[i], pkt.tobs_ns[i], slow_frame_seq_len_, raw_exec);
+              pkt.local_slow_ids[i], src_slots[i], pkt.tobs_ns[i], pkt.seqlens[i], raw_exec);
         }
       }
       TS_SCHED_CUDA_CHECK(cudaEventRecord(stg.slice_done_event, raw_exec));
@@ -2274,7 +2440,7 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
               pkt.shard_local_fast_ids[f],
               pkt.shard_dst_slots[f],
               pkt.shard_tobs_ns[f],
-              slow_frame_seq_len_,
+              pkt.shard_seqlens[f],
               raw_p2p,
               done_ev);
         }
@@ -2287,6 +2453,7 @@ void TimeAwareScheduler::slow_disagg_stage_loop(int32_t replica_idx, int32_t sta
           std::lock_guard<std::mutex> lk(ingress_[g_s]->mu);
           dropped_fast += mark_slow_published_locked(*ingress_[g_s], pkt.tobs_ns[i], pub_now);
           ingress_[g_s]->slow_inflight = false;
+          ingress_[g_s]->inflight_prompt_row = -1;
         }
         {
           std::lock_guard<std::mutex> tlk(telem_mu_);

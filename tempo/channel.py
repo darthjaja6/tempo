@@ -419,6 +419,8 @@ class SlowCaptureContext:
     num_kv_heads: int = 2
     head_dim: int = 128
     device: torch.device = field(default_factory=lambda: torch.device("cuda:0"))
+    prompt_slot_ids: Optional[torch.Tensor] = None
+    seq_lens: Optional[torch.Tensor] = None
 
     _probe_mode: bool = False
     _recorded_layers: Set[int] = field(default_factory=set)
@@ -733,6 +735,9 @@ class Engine:
         max_slow_aoi_ms: Optional[float] = None,
         max_q_len: int = 64,
         max_q_heads: int = 32,
+        rtc_inpaint: Optional[bool] = None,
+        interpolate_actions: bool = True,
+        anchor_to_slow_obs: bool = False,
     ) -> None:
         """Constructs a Tempo serving engine from ``model`` (HF repo ID or path), ``(slow, fast)`` modules, or ``@engine.stage``.
 
@@ -740,6 +745,9 @@ class Engine:
         - ``fast_devices``: ``0`` or ``[1, 2, 3]`` for Fast shards (defaults to ``slow_devices`` when single-stage).
         - Timing contract: ``deadline_ms <= 1000 / fast_rate_hz`` and ``(horizon_steps - 1) * step_dt_ms > 1000 / fast_rate_hz + deadline_ms``.
         - ``max_slow_aoi_ms``: Maximum Slow observation staleness (ms) before Slow takes scheduling priority.
+        - ``rtc_inpaint``, ``interpolate_actions``, ``anchor_to_slow_obs``: Configure in-model RTC frozen-prefix
+          conditioning (defaults to ``deployment.rtc_conditioning_supported`` when loading a model), continuous vs.
+          discrete-step trajectory sampling, and Slow-observation chunk time anchoring.
         """
         if num_streams < 1:
             raise ValueError(f"num_streams must be >= 1, got {num_streams}")
@@ -756,6 +764,14 @@ class Engine:
         self.num_streams = int(num_streams)
         self.max_slow_aoi_ms = max_slow_aoi_ms
         self.compile_fast = bool(compile_fast)
+        self._rtc_inpaint_override: Optional[bool] = None if rtc_inpaint is None else bool(rtc_inpaint)
+        self.interpolate_actions = bool(interpolate_actions)
+        self.anchor_to_slow_obs = bool(anchor_to_slow_obs)
+        if self._rtc_inpaint_override is True and self.anchor_to_slow_obs:
+            raise ValueError(
+                "rtc_inpaint=True cannot be combined with anchor_to_slow_obs=True; "
+                "in-model frozen-prefix conditioning requires Fast t_obs-anchored splice windows"
+            )
         self._slow_spec: Optional[StageSpec] = None
         self._fast_spec: Optional[StageSpec] = None
         self._running: bool = False
@@ -893,10 +909,32 @@ class Engine:
             raise RuntimeError("Register the Fast stage before querying engine.horizon_steps")
         return max(2, int(round(self._fast_spec.horizon_ms / self.step_dt_ms)))
 
+    def _effective_max_slow_aoi_ms(self) -> float:
+        if self.max_slow_aoi_ms is not None:
+            return float(self.max_slow_aoi_ms)
+        if self._slow_spec is None:
+            return 1000.0
+        return 1.35 * (1000.0 / self._slow_spec.rate_hz)
+
+    @property
+    def rtc_inpaint(self) -> bool:
+        if self._rtc_inpaint_override is not None:
+            return self._rtc_inpaint_override
+        if self.deployment is not None:
+            return bool(self.deployment.rtc_conditioning_supported)
+        return True
+
     @property
     def prefix_steps(self) -> int:
         if self._fast_spec is None:
             raise RuntimeError("Register the Fast stage before querying engine.prefix_steps")
+        if not self.rtc_inpaint:
+            return 0
+        if self.anchor_to_slow_obs:
+            raise ValueError(
+                "rtc_inpaint=True cannot be combined with anchor_to_slow_obs=True; "
+                "in-model frozen-prefix conditioning requires Fast t_obs-anchored splice windows"
+            )
         return min(
             self.horizon_steps - 1, max(1, int(math.ceil(self._fast_spec.deadline_ms / self.step_dt_ms)) + 1)
         )
@@ -989,6 +1027,18 @@ class Engine:
         if not self.fast_obs_shape:
             raise ValueError("fast_obs_shape must be non-empty")
 
+        from .models.base import SlowBackbone
+
+        if self.deployment is not None:
+            for rep in self.deployment.slow_replicas:
+                for stg in rep:
+                    if isinstance(stg, SlowBackbone):
+                        stg.ensure_stream_capacity(self.num_streams)
+        if self._slow_spec is not None:
+            for stg_fn in self._slow_spec.stages:
+                if isinstance(stg_fn, SlowBackbone):
+                    stg_fn.ensure_stream_capacity(self.num_streams)
+
         remote_slow = self._slow_spec is None
         if not remote_slow:
             assert self._slow_spec is not None
@@ -1006,20 +1056,36 @@ class Engine:
                 )
 
         fast_period_ms = 1000.0 / self._fast_spec.rate_hz
-        if self._fast_spec.deadline_ms > fast_period_ms:
-            raise ValueError(
-                f"Single-slot staged RTC contract requires deadline_ms ({self._fast_spec.deadline_ms} ms) "
-                f"<= T_fast ({fast_period_ms:.1f} ms)"
-            )
         horizon_steps = max(2, int(round(self._fast_spec.horizon_ms / self.step_dt_ms)))
         effective_horizon_ms = (horizon_steps - 1) * self.step_dt_ms
-        if effective_horizon_ms <= fast_period_ms + self._fast_spec.deadline_ms:
-            min_dt = (fast_period_ms + self._fast_spec.deadline_ms + 1.0) / max(1, horizon_steps - 1)
+        effective_max_slow_aoi_ms = self._effective_max_slow_aoi_ms()
+        req_span_ms = self._fast_spec.deadline_ms + (
+            effective_max_slow_aoi_ms if self.anchor_to_slow_obs else 0.0
+        )
+        if self._fast_spec.deadline_ms > fast_period_ms:
             raise ValueError(
-                f"RTC lookahead contract violated: effective horizon ({effective_horizon_ms:.1f} ms across "
-                f"{horizon_steps} steps at step_dt_ms={self.step_dt_ms:.2f}) must exceed "
-                f"T_fast ({fast_period_ms:.1f} ms) + deadline_ms ({self._fast_spec.deadline_ms} ms). "
-                f"Pass step_dt_ms>={min_dt:.2f} (or adjust fast_rate_hz / deadline_ms)."
+                f"Single-slot Fast mailbox contract requires deadline_ms ({self._fast_spec.deadline_ms} ms) "
+                f"<= T_fast ({fast_period_ms:.1f} ms)"
+            )
+        if self.rtc_inpaint and self.anchor_to_slow_obs:
+            raise ValueError(
+                "rtc_inpaint=True cannot be combined with anchor_to_slow_obs=True; "
+                "in-model frozen-prefix conditioning requires Fast t_obs-anchored splice windows"
+            )
+        if self.rtc_inpaint:
+            if effective_horizon_ms <= fast_period_ms + req_span_ms:
+                min_dt = (fast_period_ms + req_span_ms + 1.0) / max(1, horizon_steps - 1)
+                raise ValueError(
+                    f"RTC lookahead contract violated: effective horizon ({effective_horizon_ms:.1f} ms across "
+                    f"{horizon_steps} steps at step_dt_ms={self.step_dt_ms:.2f}) must exceed "
+                    f"T_fast ({fast_period_ms:.1f} ms) + prefix_span_ms ({req_span_ms:.1f} ms). "
+                    f"Pass step_dt_ms>={min_dt:.2f} (or adjust fast_rate_hz / deadline_ms)."
+                )
+        elif effective_horizon_ms < fast_period_ms + req_span_ms:
+            raise ValueError(
+                f"Effective horizon ({effective_horizon_ms:.1f} ms across {horizon_steps} steps at "
+                f"step_dt_ms={self.step_dt_ms:.2f}) must be >= T_fast ({fast_period_ms:.1f} ms) + "
+                f"required_span_ms ({req_span_ms:.1f} ms)"
             )
 
         raw_fast_devs = list(self._fast_spec.fast_devices)
@@ -1027,14 +1093,9 @@ class Engine:
             P = 0
             active_slow_devs: List[List[int]] = []
             active_fast_devs = list(raw_fast_devs[: min(self.num_streams, len(raw_fast_devs))])
-            effective_max_slow_aoi_ms = self.max_slow_aoi_ms if self.max_slow_aoi_ms is not None else 1000.0
             max_slice_ms = 2.0
         else:
             assert self._slow_spec is not None
-            slow_period_ms = 1000.0 / self._slow_spec.rate_hz
-            effective_max_slow_aoi_ms = (
-                self.max_slow_aoi_ms if self.max_slow_aoi_ms is not None else 1.35 * slow_period_ms
-            )
             max_slice_ms = self._slow_spec.max_slice_ms
             P = len(self._slow_spec.stages)
             raw_slow_devs = list(self._slow_spec.slow_devices)
@@ -1258,6 +1319,9 @@ class Engine:
                 action_dim=self.action_dim,
                 step_dt_ns=self.step_dt_ns,
                 device_id=f_dev_id,
+                rtc_inpaint=self.rtc_inpaint,
+                interpolate=self.interpolate_actions,
+                anchor_to_slow_obs=self.anchor_to_slow_obs,
             )
             self.fast_tscs.append(tsc_f)
             self.fast_rtcs.append(rtc_f)
@@ -1365,9 +1429,11 @@ class Engine:
                         s_pt_st = torch.empty((0,), dtype=torch.int32, device=s_dev)
                         s_start_st = torch.empty((0,), dtype=torch.int32, device=s_dev)
                         s_tobs_st = torch.empty((0,), dtype=torch.int64, device=s_dev)
+                    s_sids_st = torch.arange(r_b_slow, dtype=torch.int32, device=s_dev)
+                    s_seqlens_st = torch.full((r_b_slow,), ch.frame_seq_len, dtype=torch.int32, device=s_dev)
 
                     self._retained_tensors.extend(
-                        [s_obs_st, *act_in_st, *act_out_st, s_pt_st, s_start_st, s_tobs_st]
+                        [s_obs_st, *act_in_st, *act_out_st, s_pt_st, s_start_st, s_tobs_st, s_sids_st, s_seqlens_st]
                     )
                     self.scheduler.init_slow_stage(
                         r,
@@ -1381,6 +1447,8 @@ class Engine:
                         s_pt_st,
                         s_start_st,
                         s_tobs_st,
+                        s_sids_st,
+                        s_seqlens_st,
                     )
 
                     slow_exec_stream = torch.cuda.ExternalStream(
@@ -1398,6 +1466,8 @@ class Engine:
                                     )
                                 )
                                 s_start_st[:b_s].fill_((ch.window_frames - 1) * frame_pages)
+                            s_sids_st[:b_s].copy_(torch.arange(b_s, dtype=torch.int32, device=s_dev))
+                            s_seqlens_st[:b_s].fill_(ch.frame_seq_len)
 
                             slow_ctx = SlowCaptureContext(
                                 k_pool=s_tsc.k_pool if writes_tsc else None,
@@ -1419,6 +1489,8 @@ class Engine:
                                 num_kv_heads=ch.num_kv_heads,
                                 head_dim=ch.head_dim,
                                 device=s_dev,
+                                prompt_slot_ids=s_sids_st[:b_s],
+                                seq_lens=s_seqlens_st[:b_s],
                             )
                             active_ctx_holder[0] = slow_ctx
 
@@ -1754,23 +1826,72 @@ class Engine:
     def __exit__(self, *_exc: object) -> None:
         self.stop()
 
+    def _active_slow_replica_count(self) -> int:
+        if self.deployment is None or not self.deployment.slow_replicas:
+            return 0
+        if self.active_slow_devices:
+            return min(len(self.active_slow_devices), len(self.deployment.slow_replicas))
+        return len(self.deployment.slow_replicas)
+
+    def _slow_stage0_for_stream(self, stream_id: int):
+        from .models.base import SlowBackbone
+
+        R = self._active_slow_replica_count()
+        if self.deployment is not None and R > 0:
+            stg0 = self.deployment.slow_replicas[stream_id % R][0]
+            return stg0 if isinstance(stg0, SlowBackbone) else None
+        if self._slow_spec is not None and self._slow_spec.stages:
+            stg0 = self._slow_spec.stages[0]
+            return stg0 if isinstance(stg0, SlowBackbone) else None
+        return None
+
+    def _all_slow_stage0s(self) -> List[object]:
+        if self.deployment is not None and self.deployment.slow_replicas:
+            return [rep[0] for rep in self.deployment.slow_replicas]
+        if self._slow_spec is not None and self._slow_spec.stages:
+            return [self._slow_spec.stages[0]]
+        return []
+
     def set_prompt(self, prompt: Union[str, Sequence[int], torch.Tensor], **kwargs: object) -> None:
-        """Pauses the scheduler, updates the shared prompt buffer on all Slow replicas, and resumes."""
-        if self.deployment is None:
-            raise RuntimeError("set_prompt() requires an Engine constructed with model=... or (slow=..., fast=...)")
-        was_running = self._running
-        if was_running and self.scheduler is not None:
-            self.scheduler.stop()
-            self._running = False
-        try:
-            for rep in self.deployment.slow_replicas:
-                rep[0].set_prompt(prompt, **kwargs)  # type: ignore[attr-defined]
-            for pipe in self.active_slow_devices:
-                torch.cuda.synchronize(pipe[0])
-        finally:
-            if was_running and self.scheduler is not None:
-                self.scheduler.start()
-                self._running = True
+        """Updates the prompt buffer on Slow replicas using lock-free 4-slot isolation."""
+        from .models.base import SlowBackbone
+
+        all_stg0s = self._all_slow_stage0s()
+        if not all_stg0s or not all(isinstance(stg, SlowBackbone) for stg in all_stg0s):
+            raise RuntimeError("set_prompt() requires a SlowBackbone Slow stage")
+
+        if self.scheduler is None:
+            for stg in all_stg0s:
+                assert isinstance(stg, SlowBackbone)
+                stg.ensure_stream_capacity(self.num_streams)
+
+        call_kw = dict(kwargs)
+        s_id = call_kw.pop("stream_id", None)
+        if s_id is not None:
+            if not isinstance(s_id, int) or isinstance(s_id, bool):
+                raise TypeError(f"stream_id must be an int, got {type(s_id).__name__}")
+            if s_id < 0 or s_id >= self.num_streams:
+                raise IndexError(f"stream_id {s_id} out of range [0, {self.num_streams})")
+            stg0 = self._slow_stage0_for_stream(s_id)
+            assert stg0 is not None
+            with stg0.stream_prompt_lock(s_id):
+                busy = (
+                    tuple(int(x) for x in self.scheduler.busy_slow_prompt_rows(s_id))
+                    if self.scheduler is not None
+                    else (-1, -1)
+                )
+                stg0.set_prompt(prompt, stream_id=s_id, busy_rows=(busy[0], busy[1]), **call_kw)
+        elif self.scheduler is not None:
+            for s in range(self.num_streams):
+                stg0 = self._slow_stage0_for_stream(s)
+                assert stg0 is not None
+                with stg0.stream_prompt_lock(s):
+                    busy = tuple(int(x) for x in self.scheduler.busy_slow_prompt_rows(s))
+                    stg0.set_prompt(prompt, stream_id=s, busy_rows=(busy[0], busy[1]), **call_kw)
+        else:
+            for stg in all_stg0s:
+                assert isinstance(stg, SlowBackbone)
+                stg.set_prompt(prompt, **call_kw)
 
     def set_state(self, state: torch.Tensor) -> None:
         """Pauses the scheduler, updates the shared robot state buffer on all Slow replicas, and resumes."""
@@ -1826,6 +1947,13 @@ class Engine:
         """Returns C++ scheduler telemetry (``fast_ttac_ms`` chunk latencies, ``slow_latency_ms``, ``fast_requests_served``)."""
         return self._require_compiled().telemetry()
 
+    def _resolve_stream_prompt_meta(self, stream_id: int) -> Tuple[int, int]:
+        stg0 = self._slow_stage0_for_stream(stream_id)
+        if stg0 is not None:
+            return stg0.get_stream_prompt_meta(stream_id)
+        assert self._slow_spec is not None and self._slow_spec.publishes is not None
+        return self._slow_spec.publishes.frame_seq_len, stream_id
+
     def push_slow(
         self,
         obs: torch.Tensor,
@@ -1840,7 +1968,14 @@ class Engine:
         obs = _to_bf16_obs(obs, "push_slow")
         if t_obs_ns is None:
             t_obs_ns = sched.now_ns()
-        sched.submit_slow_obs(stream_id, t_obs_ns, obs)
+        stg0 = self._slow_stage0_for_stream(stream_id)
+        if stg0 is not None:
+            with stg0.stream_prompt_lock(stream_id):
+                meta_seq, meta_slot = stg0.get_stream_prompt_meta(stream_id)
+                sched.submit_slow_obs(stream_id, t_obs_ns, obs, meta_seq, meta_slot)
+        else:
+            meta_seq, meta_slot = self._resolve_stream_prompt_meta(stream_id)
+            sched.submit_slow_obs(stream_id, t_obs_ns, obs, meta_seq, meta_slot)
         return t_obs_ns
 
     def push_slow_batch(self, obs_batch: torch.Tensor, *, t_obs_ns: Optional[int] = None) -> int:
@@ -1861,7 +1996,14 @@ class Engine:
         for r, pipe in enumerate(self.active_slow_devices):
             shard_obs = _to_bf16_obs(obs_batch[r::R], "push_slow_batch", device=f"cuda:{pipe[0]}")
             for idx, s in enumerate(range(r, self.num_streams, R)):
-                sched.submit_slow_obs(s, t_obs_ns, shard_obs[idx])
+                stg0 = self._slow_stage0_for_stream(s)
+                if stg0 is not None:
+                    with stg0.stream_prompt_lock(s):
+                        meta_seq, meta_slot = stg0.get_stream_prompt_meta(s)
+                        sched.submit_slow_obs(s, t_obs_ns, shard_obs[idx], meta_seq, meta_slot)
+                else:
+                    meta_seq, meta_slot = self._resolve_stream_prompt_meta(s)
+                    sched.submit_slow_obs(s, t_obs_ns, shard_obs[idx], meta_seq, meta_slot)
         return t_obs_ns
 
     def publish_remote_hidden(self, stream_id: int, hidden: torch.Tensor, t_obs_ns: int) -> bool:
@@ -1918,15 +2060,14 @@ class Engine:
             t_obs_ns = sched.now_ns()
         F = len(self.active_fast_devices)
         for f, f_dev in enumerate(self.active_fast_devices):
-            s_ids = range(f, self.num_streams, F)
+            s_ids = list(range(f, self.num_streams, F))
             if fast_obs_batch is None:
                 shard_obs = torch.randn(
                     (len(s_ids), *self.fast_obs_shape), dtype=torch.bfloat16, device=f"cuda:{f_dev}"
                 )
             else:
                 shard_obs = _to_bf16_obs(fast_obs_batch[f::F], "push_fast_batch", device=f"cuda:{f_dev}")
-            for idx, s in enumerate(s_ids):
-                sched.submit_fast_obs(s, t_obs_ns, shard_obs[idx])
+            sched.submit_fast_obs_batch(s_ids, t_obs_ns, shard_obs)
         return t_obs_ns
 
     def sample_actions(self, t_query_ns: Optional[int] = None, cpu: bool = False):

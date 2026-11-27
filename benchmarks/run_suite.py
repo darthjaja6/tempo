@@ -82,6 +82,12 @@ def count_unique_params(dep: DualSystemDeployment) -> int:
     return total
 
 
+def _resolve_prefix_steps(dep: DualSystemDeployment, deadline_ms: float) -> int:
+    if not dep.rtc_conditioning_supported:
+        return 0
+    return min(dep.chunk_size - 1, max(1, int(math.ceil(deadline_ms / dep.step_dt_ms)) + 1))
+
+
 def _make_engine_from_deployment(
     dep: DualSystemDeployment,
     *,
@@ -326,7 +332,7 @@ def _run_traffic_point_baseline(
 ) -> Dict[str, Any]:
     act_fast = list(fast_devices[: min(num_streams, len(fast_devices))])
     fast_map = {act_fast[i]: dep.fast_shards[i] for i in range(len(act_fast))}
-    prefix_steps = min(dep.chunk_size - 1, max(1, int(math.ceil(deadline_ms / dep.step_dt_ms)) + 1))
+    prefix_steps = _resolve_prefix_steps(dep, deadline_ms)
 
     base = PyTorchDualStreamBaseline(
         dep.channel,
@@ -508,7 +514,7 @@ def _measure_reaction_baseline(
 ) -> float:
     act_fast = list(fast_devices[: min(num_streams, len(fast_devices))])
     fast_map = {act_fast[i]: dep_base.fast_shards[i] for i in range(len(act_fast))}
-    prefix_steps = min(dep_base.chunk_size - 1, max(1, int(math.ceil(deadline_ms / dep_base.step_dt_ms)) + 1))
+    prefix_steps = _resolve_prefix_steps(dep_base, deadline_ms)
     base = PyTorchDualStreamBaseline(
         dep_base.channel,
         action_dim=dep_base.action_dim,
@@ -650,7 +656,7 @@ def _calibrate_closed_loop_axis(
         p_cond = a0_init.view(1, 1, -1).expand(1, prefix_steps, -1).to(torch.bfloat16).contiguous()
         sl = slice(prefix_steps, min(dep.chunk_size, prefix_steps + 25))
     else:
-        p_cond = p_zero
+        p_cond = torch.zeros((1, 0, dep.action_dim), dtype=torch.bfloat16)
         sl = slice(0, min(dep.chunk_size, 25))
 
     alphas = [-1.0, -0.66, -0.33, 0.0, 0.33, 0.66, 1.0]
@@ -840,7 +846,7 @@ def _measure_closed_loop_baseline(
 
     act_fast = list(fast_devices[: min(num_streams, len(fast_devices))])
     fast_map = {act_fast[i]: dep_base.fast_shards[i] for i in range(len(act_fast))}
-    prefix_steps = min(dep_base.chunk_size - 1, max(1, int(math.ceil(deadline_ms / dep_base.step_dt_ms)) + 1))
+    prefix_steps = _resolve_prefix_steps(dep_base, deadline_ms)
     base = PyTorchDualStreamBaseline(
         dep_base.channel,
         action_dim=dep_base.action_dim,
@@ -984,9 +990,7 @@ def run_full_topology_suite(
     params_b = count_unique_params(dep_tempo) / 1e9
     print(f"  Loaded {model_id} ({params_b:.2f}B active params, mode={dep_tempo.channel.mode})", flush=True)
 
-    prefix_steps = min(
-        dep_tempo.chunk_size - 1, max(1, int(math.ceil(deadline_ms / dep_tempo.step_dt_ms)) + 1)
-    )
+    prefix_steps = _resolve_prefix_steps(dep_tempo, deadline_ms)
     B_par = max(len(slow_devices), len(fast_devices), 2)
     gen_p = torch.Generator().manual_seed(1234)
     p_s_obs = torch.rand((B_par, *dep_tempo.slow_obs_shape), generator=gen_p, dtype=torch.bfloat16)
@@ -1014,7 +1018,12 @@ def run_full_topology_suite(
     max_eng_streams = max([*valid_streams, min_topo_n])
 
     act_zero_e, u_dir_e = _calibrate_closed_loop_axis(
-        dep_tempo, obs_a, obs_b, f_ref, prefix_steps=prefix_steps, use_rtc_equilibrium=True
+        dep_tempo,
+        obs_a,
+        obs_b,
+        f_ref,
+        prefix_steps=prefix_steps,
+        use_rtc_equilibrium=bool(dep_tempo.rtc_conditioning_supported),
     )
 
     eng_shared = _make_engine_from_deployment(

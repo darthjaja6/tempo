@@ -11,18 +11,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from tempo.channel import TemporalChannel
+from tempo.models.base import SlowBackbone
 
 
 class EagerCaptureContext:
     """In-memory capture context executing SlowBackbone.forward() eagerly without TSC pools."""
 
-    def __init__(self, channel: TemporalChannel, device: torch.device) -> None:
+    def __init__(
+        self,
+        channel: TemporalChannel,
+        device: torch.device,
+        *,
+        prompt_slot_ids: Optional[torch.Tensor] = None,
+        seq_lens: Optional[torch.Tensor] = None,
+    ) -> None:
         self.channel = channel
         self.mode = channel.mode
         self.frame_seq_len = channel.frame_seq_len
         self.num_kv_heads = channel.num_kv_heads
         self.head_dim = channel.head_dim
         self.device = device
+        self.prompt_slot_ids = prompt_slot_ids
+        self.seq_lens = seq_lens
+        self._probe_mode: bool = False
         self.kv_by_layer: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
         self.hidden: Optional[torch.Tensor] = None
 
@@ -48,6 +59,8 @@ class EagerDenseStateView:
         batch_hidden: Optional[torch.Tensor] = None,
         delta_sec: Optional[torch.Tensor] = None,
         prefix_valid: Optional[torch.Tensor] = None,
+        seq_lens: Optional[torch.Tensor] = None,
+        cpu_seq_lens: Optional[Sequence[int]] = None,
     ) -> None:
         self.mode = channel.mode
         self.max_seq_len = channel.max_seq_len
@@ -57,12 +70,41 @@ class EagerDenseStateView:
         self._hidden = batch_hidden
         if batch_ks is not None:
             B = batch_ks[0].size(0)
+            full_s = batch_ks[0].size(1)
             dev = batch_ks[0].device
         else:
             assert batch_hidden is not None
             B = batch_hidden.size(0)
+            full_s = batch_hidden.size(1)
             dev = batch_hidden.device
-        self.seq_lens = torch.full((B,), channel.max_seq_len, dtype=torch.int32, device=dev)
+
+        if seq_lens is not None or cpu_seq_lens is not None:
+            if cpu_seq_lens is not None:
+                s_min = int(min(cpu_seq_lens))
+                s_max = int(max(cpu_seq_lens))
+            else:
+                assert seq_lens is not None
+                s_min = int(seq_lens.min().item())
+                s_max = int(seq_lens.max().item())
+            if s_min < 1:
+                raise ValueError(f"EagerDenseStateView requires seq_lens >= 1, got min={s_min}")
+            self._has_seq_mask = s_min != s_max
+            self._slice_seq_len: Optional[int] = (
+                min(full_s, ((s_max + 7) // 8) * 8) if self._has_seq_mask else min(s_max, full_s)
+            )
+            self._need_hidden_mask = s_min < full_s
+            raw_seq = (
+                seq_lens.to(device=dev, dtype=torch.int32)
+                if seq_lens is not None
+                else torch.tensor(list(cpu_seq_lens), dtype=torch.int32, device=dev)  # type: ignore[arg-type]
+            )
+            self.seq_lens = raw_seq.clamp(1, full_s).contiguous()
+        else:
+            self._slice_seq_len = None
+            self._has_seq_mask = False
+            self._need_hidden_mask = False
+            self.seq_lens = torch.full((B,), full_s, dtype=torch.int32, device=dev)
+
         self._delta_sec = (
             delta_sec
             if delta_sec is not None
@@ -86,20 +128,60 @@ class EagerDenseStateView:
         assert self._ks is not None and self._vs is not None
         k = self._ks[layer_idx]  # [B, S, H_kv, D]
         v = self._vs[layer_idx]
-        H_q = q.size(2)
+        if self._slice_seq_len is not None:
+            k = k[:, : self._slice_seq_len]
+            v = v[:, : self._slice_seq_len]
+        B, Q_len, H_q, D = q.shape
         H_kv = k.size(2)
-        D = q.size(3)
+        S = k.size(1)
+        scale = 1.0 / math.sqrt(D)
         groups = H_q // H_kv
+
         qt = q.transpose(1, 2).contiguous()
         kt = k.transpose(1, 2).repeat_interleave(groups, dim=1).contiguous()
         vt = v.transpose(1, 2).repeat_interleave(groups, dim=1).contiguous()
 
+        if self._has_seq_mask:
+            if return_lse:
+                s_pad = ((S + 7) // 8) * 8
+                kt_p = F.pad(kt, (0, 0, 0, s_pad - S)) if s_pad > S else kt
+                vt_p = F.pad(vt, (0, 0, 0, s_pad - S)) if s_pad > S else vt
+                key_mask_p = torch.arange(s_pad, device=q.device).view(1, 1, 1, s_pad) < self.seq_lens.clamp(
+                    1, S
+                ).view(B, 1, 1, 1)
+                attn_bias = (
+                    torch.where(key_mask_p, 0.0, float("-inf"))
+                    .to(dtype=qt.dtype)
+                    .expand(B, H_q, Q_len, s_pad)
+                    .contiguous()
+                )
+                attn_out, lse, *_ = torch.ops.aten._scaled_dot_product_efficient_attention(
+                    qt, kt_p, vt_p, attn_bias, True, 0.0, False, scale=scale
+                )
+                res = attn_out.transpose(1, 2).contiguous()
+                lse_t = lse[:, :, :Q_len].transpose(1, 2).contiguous()
+                if out is not None:
+                    out.copy_(res)
+                    res = out
+                if out_lse is not None:
+                    out_lse.copy_(lse_t)
+                    lse_t = out_lse
+                return res, lse_t
+            key_mask = torch.arange(S, device=q.device).view(1, 1, 1, S) < self.seq_lens.clamp(1, S).view(
+                B, 1, 1, 1
+            )
+            res = F.scaled_dot_product_attention(qt, kt, vt, attn_mask=key_mask).transpose(1, 2).contiguous()
+            if out is not None:
+                out.copy_(res)
+                return out
+            return res
+
         if return_lse:
             attn_out, lse, *_ = torch.ops.aten._scaled_dot_product_flash_attention(
-                qt, kt, vt, 0.0, False, False, scale=1.0 / math.sqrt(D)
+                qt, kt, vt, 0.0, False, False, scale=scale
             )
             res = attn_out.transpose(1, 2).contiguous()
-            lse_t = lse.transpose(1, 2).contiguous()
+            lse_t = lse[:, :, :Q_len].transpose(1, 2).contiguous()
             if out is not None:
                 out.copy_(res)
                 res = out
@@ -122,6 +204,11 @@ class EagerDenseStateView:
         assert self._hidden is not None
         h = self._hidden
         d = self._delta_sec
+        S = h.size(1)
+        if self._need_hidden_mask:
+            valid = torch.arange(S, device=h.device).view(1, S) < self.seq_lens.view(-1, 1)
+            h = torch.where(valid.unsqueeze(-1), h, torch.zeros_like(h))
+            d = torch.where(valid, d, torch.full_like(d, -1.0))
         if out is not None:
             out.copy_(h)
             h = out
@@ -146,25 +233,33 @@ def eager_reference_forward(
     cur: object = slow_obs
     all_kv: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
     hidden: Optional[torch.Tensor] = None
+    seq_lens: Optional[torch.Tensor] = None
+    B_ref = int(slow_obs.size(0))
     for stg in slow_stages:
+        if isinstance(stg, SlowBackbone):
+            stg.ensure_stream_capacity(B_ref)
         dev = next(itertools.chain(stg.parameters(), stg.buffers())).device
-        ctx = EagerCaptureContext(channel, dev)
+        stg_seq = seq_lens.to(device=dev) if seq_lens is not None else None
+        ctx = EagerCaptureContext(channel, dev, seq_lens=stg_seq)
         if isinstance(cur, torch.Tensor):
             cur = cur.to(device=dev, dtype=torch.bfloat16)
         cur = stg(cur, ctx)
+        if ctx.seq_lens is not None:
+            seq_lens = ctx.seq_lens
         all_kv.update(ctx.kv_by_layer)
         if ctx.hidden is not None:
             hidden = ctx.hidden
 
     f_dev = next(itertools.chain(fast_head.parameters(), fast_head.buffers())).device
     pv = prefix_valid.to(device=f_dev, dtype=torch.bool) if prefix_valid is not None else None
+    f_seq = seq_lens.to(device=f_dev, dtype=torch.int32) if seq_lens is not None else None
     if channel.mode == "kv":
         ks = [all_kv[l][0].to(f_dev) for l in range(channel.layers)]
         vs = [all_kv[l][1].to(f_dev) for l in range(channel.layers)]
-        view = EagerDenseStateView(channel, batch_ks=ks, batch_vs=vs, prefix_valid=pv)
+        view = EagerDenseStateView(channel, batch_ks=ks, batch_vs=vs, prefix_valid=pv, seq_lens=f_seq)
     else:
         assert hidden is not None
-        view = EagerDenseStateView(channel, batch_hidden=hidden.to(f_dev), prefix_valid=pv)
+        view = EagerDenseStateView(channel, batch_hidden=hidden.to(f_dev), prefix_valid=pv, seq_lens=f_seq)
 
     return fast_head(
         fast_obs.to(device=f_dev, dtype=torch.bfloat16),
@@ -198,6 +293,8 @@ class PyTorchDualStreamBaseline:
         max_fast_batch_size: int = 16,
         deadline_ms: float = 25.0,
         step_dt_ms: float = 2.0,
+        interpolate: bool = True,
+        anchor_to_slow_obs: bool = False,
     ) -> None:
         self.channel = channel
         self.action_dim = action_dim
@@ -207,6 +304,8 @@ class PyTorchDualStreamBaseline:
         self.deadline_ns = int(round(deadline_ms * 1e6))
         self.step_dt_ns = int(round(step_dt_ms * 1e6))
         self.horizon_ns = (horizon_steps - 1) * self.step_dt_ns
+        self.interpolate = bool(interpolate)
+        self.anchor_to_slow_obs = bool(anchor_to_slow_obs)
 
         P = len(slow_devices[0])
         r_act = min(num_streams, len(slow_devices))
@@ -214,6 +313,10 @@ class PyTorchDualStreamBaseline:
         self.active_slow_devs = [list(slow_devices[i]) for i in range(r_act)]
         self.active_fast_devs = list(fast_devices[:f_act])
         self.slow_replicas = [slow_replicas[i] for i in range(r_act)]
+        for rep in self.slow_replicas:
+            for stg in rep:
+                if isinstance(stg, SlowBackbone):
+                    stg.ensure_stream_capacity(num_streams)
         self.fast_experts = fast_experts
         self.R = len(self.active_slow_devs)
         self.P = P
@@ -287,7 +390,7 @@ class PyTorchDualStreamBaseline:
         self.kv_packed: List[torch.Tensor] = []
         self.hidden_packed: List[torch.Tensor] = []
         self.state_t_obs: List[int] = []
-        now_ns = self.now_ns()
+        self.state_seq_len: List[int] = []
         S = channel.frame_seq_len
         for s in range(num_streams):
             f_dev = torch.device(f"cuda:{self.active_fast_devs[self.fast_shard_of[s]]}")
@@ -303,12 +406,14 @@ class PyTorchDualStreamBaseline:
                 self.hidden_packed.append(
                     torch.zeros((1, S, channel.feature_dim), dtype=torch.bfloat16, device=f_dev)
                 )
-            self.state_t_obs.append(now_ns)
+            self.state_t_obs.append(0)
+            self.state_seq_len.append(S)
 
         self.slow_q_locks = [threading.Lock() for _ in range(self.R)]
-        self.pending_slow: List[Dict[int, Tuple[int, torch.Tensor, torch.cuda.Event]]] = [
+        self.pending_slow: List[Dict[int, Tuple[int, torch.Tensor, torch.cuda.Event, int, int]]] = [
             {} for _ in range(self.R)
         ]
+        self.inflight_slow_row: List[int] = [-1 for _ in range(num_streams)]
         self.fast_q_locks = [threading.Lock() for _ in range(self.F)]
         self.pending_fast: List[Dict[int, Tuple[int, torch.Tensor, torch.cuda.Event]]] = [
             {} for _ in range(self.F)
@@ -342,7 +447,7 @@ class PyTorchDualStreamBaseline:
                 torch.zeros((n_f, horizon_steps, action_dim), dtype=torch.float32, device=f_dev)
             )
             self.active_t_obs_gpu.append(torch.zeros((n_f,), dtype=torch.int64, device=f_dev))
-            self.active_slow_t_obs_gpu.append(torch.full((n_f,), now_ns, dtype=torch.int64, device=f_dev))
+            self.active_slow_t_obs_gpu.append(torch.zeros((n_f,), dtype=torch.int64, device=f_dev))
             self.active_valid_gpu.append(torch.zeros((n_f,), dtype=torch.bool, device=f_dev))
             self.shard_arange.append(torch.arange(n_f, device=f_dev))
             cap_f = max(1, self.max_fast_batch_size)
@@ -366,6 +471,7 @@ class PyTorchDualStreamBaseline:
         self.d_full_out = torch.empty((num_streams, action_dim), dtype=torch.float32, device=self.primary_dev)
 
         self.active_t_obs = [0 for _ in range(num_streams)]
+        self.active_slow_t_obs = [0 for _ in range(num_streams)]
         self.active_valid = [False for _ in range(num_streams)]
 
         self.running = False
@@ -434,10 +540,11 @@ class PyTorchDualStreamBaseline:
         if was_running:
             self.stop()
         self.resume_clock()
-        now_ns = self.now_ns()
         for r in range(self.R):
             with self.slow_q_locks[r]:
                 self.pending_slow[r].clear()
+        for s in range(self.num_streams):
+            self.inflight_slow_row[s] = -1
         for f in range(self.F):
             with self.fast_q_locks[f]:
                 self.pending_fast[f].clear()
@@ -445,13 +552,15 @@ class PyTorchDualStreamBaseline:
             with self.act_locks[f], torch.cuda.device(f_dev), torch.cuda.stream(self.sample_streams[f]):
                 self.active_valid_gpu[f].zero_()
                 self.active_t_obs_gpu[f].zero_()
-                self.active_slow_t_obs_gpu[f].fill_(now_ns)
+                self.active_slow_t_obs_gpu[f].zero_()
             self.sample_streams[f].synchronize()
         for s in range(self.num_streams):
             with self.stream_locks[s]:
                 self.state_t_obs[s] = 0
+                self.state_seq_len[s] = self.channel.frame_seq_len
         with self.stats_lock:
             self.active_t_obs = [0 for _ in range(self.num_streams)]
+            self.active_slow_t_obs = [0 for _ in range(self.num_streams)]
             self.active_valid = [False for _ in range(self.num_streams)]
             self.commit_hard_underruns = 0
         if was_running:
@@ -474,6 +583,26 @@ class PyTorchDualStreamBaseline:
                     torch.cuda.current_stream(src.device).synchronize()
             return src.to(dst_dev, dtype=torch.bfloat16, non_blocking=True).clone()
 
+    def set_prompt(self, prompt: object, *, stream_id: Optional[int] = None, **kwargs: object) -> None:
+        if not all(isinstance(self.slow_replicas[r][0], SlowBackbone) for r in range(self.R)):
+            raise RuntimeError("set_prompt() requires a SlowBackbone Slow stage")
+        target_streams = [stream_id] if stream_id is not None else list(range(self.num_streams))
+        for s in target_streams:
+            if s < 0 or s >= self.num_streams:
+                raise IndexError(f"stream_id {s} out of range [0, {self.num_streams})")
+            r = self.slow_rep_of[s]
+            stg0 = self.slow_replicas[r][0]
+            assert isinstance(stg0, SlowBackbone)
+            with stg0.stream_prompt_lock(s), self.slow_q_locks[r]:
+                busy_pending = self.pending_slow[r][s][3] if s in self.pending_slow[r] else -1
+                busy_inflight = self.inflight_slow_row[s]
+                stg0.set_prompt(
+                    prompt,  # type: ignore[arg-type]
+                    stream_id=s,
+                    busy_rows=(busy_pending, busy_inflight),
+                    **kwargs,
+                )
+
     def push_slow(
         self,
         obs: torch.Tensor,
@@ -481,16 +610,27 @@ class PyTorchDualStreamBaseline:
         stream_id: int = 0,
         t_obs_ns: Optional[int] = None,
     ) -> int:
+        if stream_id < 0 or stream_id >= self.num_streams:
+            raise IndexError(f"stream_id {stream_id} out of range [0, {self.num_streams})")
         if t_obs_ns is None:
             t_obs_ns = self.now_ns()
         r = self.slow_rep_of[stream_id]
         dst_dev_id = self.active_slow_devs[r][0]
         ing_st = self.slow_ingest_streams[r]
-        with self.slow_q_locks[r]:
-            obs_copy = self._copy_tensor_to_dev(obs, dst_dev_id, ing_st)
-            ev = torch.cuda.Event()
-            ev.record(ing_st)
-            self.pending_slow[r][stream_id] = (t_obs_ns, obs_copy, ev)
+        stg0 = self.slow_replicas[r][0]
+        if isinstance(stg0, SlowBackbone):
+            with stg0.stream_prompt_lock(stream_id), self.slow_q_locks[r]:
+                obs_copy = self._copy_tensor_to_dev(obs, dst_dev_id, ing_st)
+                ev = torch.cuda.Event()
+                ev.record(ing_st)
+                seq_l, prompt_row = stg0.get_stream_prompt_meta(stream_id)
+                self.pending_slow[r][stream_id] = (t_obs_ns, obs_copy, ev, prompt_row, seq_l)
+        else:
+            with self.slow_q_locks[r]:
+                obs_copy = self._copy_tensor_to_dev(obs, dst_dev_id, ing_st)
+                ev = torch.cuda.Event()
+                ev.record(ing_st)
+                self.pending_slow[r][stream_id] = (t_obs_ns, obs_copy, ev, stream_id, self.channel.frame_seq_len)
         return t_obs_ns
 
     def push_fast(
@@ -500,6 +640,8 @@ class PyTorchDualStreamBaseline:
         stream_id: int = 0,
         t_obs_ns: Optional[int] = None,
     ) -> int:
+        if stream_id < 0 or stream_id >= self.num_streams:
+            raise IndexError(f"stream_id {stream_id} out of range [0, {self.num_streams})")
         if t_obs_ns is None:
             t_obs_ns = self.now_ns()
         f = self.fast_shard_of[stream_id]
@@ -512,6 +654,33 @@ class PyTorchDualStreamBaseline:
             self.pending_fast[f][stream_id] = (t_obs_ns, fobs_copy, ev)
         return t_obs_ns
 
+    def push_fast_batch(
+        self,
+        fast_obs_batch: torch.Tensor,
+        *,
+        t_obs_ns: Optional[int] = None,
+    ) -> int:
+        if fast_obs_batch.size(0) != self.num_streams:
+            raise ValueError(
+                f"fast_obs_batch leading dimension ({fast_obs_batch.size(0)}) must equal num_streams ({self.num_streams})"
+            )
+        if t_obs_ns is None:
+            t_obs_ns = self.now_ns()
+        for f in range(self.F):
+            g_ids = self.shard_global_ids[f]
+            if not g_ids:
+                continue
+            dst_dev_id = self.active_fast_devs[f]
+            ing_st = self.fast_ingest_streams[f]
+            shard_src = fast_obs_batch if self.F == 1 else fast_obs_batch[g_ids]
+            with self.fast_q_locks[f]:
+                shard_copy = self._copy_tensor_to_dev(shard_src, dst_dev_id, ing_st)
+                ev = torch.cuda.Event()
+                ev.record(ing_st)
+                for local_idx, s in enumerate(g_ids):
+                    self.pending_fast[f][s] = (t_obs_ns, shard_copy[local_idx], ev)
+        return t_obs_ns
+
     def sample_actions(self, t_query_ns: int) -> Tuple[torch.Tensor, List[float], List[float], int]:
         H = self.horizon_steps
         for f in range(self.F):
@@ -520,26 +689,33 @@ class PyTorchDualStreamBaseline:
             n_f = len(self.shard_global_ids[f])
             with self.act_locks[f], torch.no_grad(), torch.cuda.device(f_dev), torch.cuda.stream(s_st):
                 age_ns = t_query_ns - self.active_t_obs_gpu[f]
+                has_slow = self.active_slow_t_obs_gpu[f] > 0
                 slow_age_ns = t_query_ns - self.active_slow_t_obs_gpu[f]
+                origin_age_ns = (
+                    torch.where(has_slow, slow_age_ns, age_ns) if self.anchor_to_slow_obs else age_ns
+                )
 
-                f_step = (age_ns.float() / float(self.step_dt_ns)).clamp(0.0, float(H - 1))
-                idx0 = f_step.floor().long()
-                idx1 = (idx0 + 1).clamp(max=H - 1)
-                frac = (f_step - idx0.float()).unsqueeze(-1)
-
-                v0 = self.active_chunks[f][self.shard_arange[f], idx0]
-                v1 = self.active_chunks[f][self.shard_arange[f], idx1]
-                interp = v0 + frac * (v1 - v0)
-                out_f = torch.where(self.active_valid_gpu[f].unsqueeze(-1), interp, torch.zeros_like(interp))
+                f_step = (origin_age_ns.float() / float(self.step_dt_ns)).clamp(0.0, float(H - 1))
+                if self.interpolate:
+                    idx0 = f_step.floor().long()
+                    idx1 = (idx0 + 1).clamp(max=H - 1)
+                    frac = (f_step - idx0.float()).unsqueeze(-1)
+                    v0 = self.active_chunks[f][self.shard_arange[f], idx0]
+                    v1 = self.active_chunks[f][self.shard_arange[f], idx1]
+                    sampled = v0 + frac * (v1 - v0)
+                else:
+                    idx_near = (f_step + 0.5).floor().long().clamp(0, H - 1)
+                    sampled = self.active_chunks[f][self.shard_arange[f], idx_near]
+                out_f = torch.where(self.active_valid_gpu[f].unsqueeze(-1), sampled, torch.zeros_like(sampled))
 
                 neg_one = torch.full((n_f,), -1.0, dtype=torch.float32, device=f_dev)
                 fa_f = torch.where(
                     self.active_valid_gpu[f], age_ns.float() * 1e-6, neg_one
                 )
                 sa_f = torch.where(
-                    self.active_valid_gpu[f], slow_age_ns.float() * 1e-6, neg_one
+                    self.active_valid_gpu[f] & has_slow, slow_age_ns.float() * 1e-6, neg_one
                 )
-                u_f = (self.active_valid_gpu[f] & (age_ns > self.horizon_ns)).sum().view(1)
+                u_f = (self.active_valid_gpu[f] & (origin_age_ns > self.horizon_ns)).sum().view(1)
 
                 self.h_sample_out[f].copy_(out_f, non_blocking=True)
                 self.h_sample_fa[f].copy_(fa_f, non_blocking=True)
@@ -583,50 +759,63 @@ class PyTorchDualStreamBaseline:
                 if self.pending_slow[r]:
                     keys = list(self.pending_slow[r].keys())[: self.slow_batch_size]
                     for k in keys:
-                        batch_items.append((k, *self.pending_slow[r].pop(k)))
+                        tup = self.pending_slow[r].pop(k)
+                        self.inflight_slow_row[k] = tup[3]
+                        batch_items.append((k, *tup))
             if not batch_items:
                 time.sleep(0.0005)
                 continue
 
             s_ids = [x[0] for x in batch_items]
             t_obs_list = [x[1] for x in batch_items]
+            slot_rows = [x[4] for x in batch_items]
+            batch_seq_lens_cpu = [x[5] for x in batch_items]
             stage_ctxs: List[Tuple[int, EagerCaptureContext]] = []
             t_launch_logical = self.now_ns()
             gpu_exec_ns = 0
 
-            with torch.no_grad():
-                dev0 = torch.device(f"cuda:{pipe_devs[0]}")
-                with torch.cuda.device(dev0), torch.cuda.stream(pipe_streams[0]):
-                    for item in batch_items:
-                        pipe_streams[0].wait_event(item[3])
-                    h = torch.stack([x[2] for x in batch_items], dim=0)
+            try:
+                with torch.no_grad():
+                    dev0 = torch.device(f"cuda:{pipe_devs[0]}")
+                    with torch.cuda.device(dev0), torch.cuda.stream(pipe_streams[0]):
+                        for item in batch_items:
+                            pipe_streams[0].wait_event(item[3])
+                        h = torch.stack([x[2] for x in batch_items], dim=0)
 
-                for p in range(self.P):
-                    p_dev_id = pipe_devs[p]
-                    p_dev = torch.device(f"cuda:{p_dev_id}")
-                    p_st = pipe_streams[p]
-                    if p > 0:
-                        prev_dev_id = pipe_devs[p - 1]
-                        prev_st = pipe_streams[p - 1]
-                        prev_st.synchronize()
-                        if self.p2p_ok[(p_dev_id, prev_dev_id)]:
-                            with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
-                                h = h.to(p_dev, non_blocking=True)
-                        else:
-                            h_cpu = h.cpu()
-                            with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
-                                h = h_cpu.to(p_dev, non_blocking=False)
+                    for p in range(self.P):
+                        p_dev_id = pipe_devs[p]
+                        p_dev = torch.device(f"cuda:{p_dev_id}")
+                        p_st = pipe_streams[p]
+                        if p > 0:
+                            prev_dev_id = pipe_devs[p - 1]
+                            prev_st = pipe_streams[p - 1]
+                            prev_st.synchronize()
+                            if self.p2p_ok[(p_dev_id, prev_dev_id)]:
+                                with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
+                                    h = h.to(p_dev, non_blocking=True)
+                            else:
+                                h_cpu = h.cpu()
+                                with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
+                                    h = h_cpu.to(p_dev, non_blocking=False)
 
-                    with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
-                        ev0 = torch.cuda.Event(enable_timing=True)
-                        ev1 = torch.cuda.Event(enable_timing=True)
-                        ev0.record(p_st)
-                        ctx = EagerCaptureContext(self.channel, p_dev)
-                        h = pipe_mods[p](h, ctx)
-                        ev1.record(p_st)
-                        p_st.synchronize()
-                        gpu_exec_ns += int(ev0.elapsed_time(ev1) * 1e6)
-                        stage_ctxs.append((p_dev_id, ctx))
+                        with torch.cuda.device(p_dev), torch.cuda.stream(p_st):
+                            ev0 = torch.cuda.Event(enable_timing=True)
+                            ev1 = torch.cuda.Event(enable_timing=True)
+                            ev0.record(p_st)
+                            slots_t = torch.tensor(slot_rows, dtype=torch.int32, device=p_dev)
+                            seq_t = torch.tensor(batch_seq_lens_cpu, dtype=torch.int32, device=p_dev)
+                            ctx = EagerCaptureContext(
+                                self.channel, p_dev, prompt_slot_ids=slots_t, seq_lens=seq_t
+                            )
+                            h = pipe_mods[p](h, ctx)
+                            ev1.record(p_st)
+                            p_st.synchronize()
+                            gpu_exec_ns += int(ev0.elapsed_time(ev1) * 1e6)
+                            stage_ctxs.append((p_dev_id, ctx))
+            finally:
+                with self.slow_q_locks[r]:
+                    for s in s_ids:
+                        self.inflight_slow_row[s] = -1
 
             self._wait_until_logical_ns(t_launch_logical + gpu_exec_ns)
             if not self.running:
@@ -655,6 +844,7 @@ class PyTorchDualStreamBaseline:
                             dst_kv[l_idx, 1].copy_(v_one, non_blocking=True)
                         cp_st.synchronize()
                         self.state_t_obs[s] = t_obs_list[idx]
+                        self.state_seq_len[s] = batch_seq_lens_cpu[idx]
                 else:
                     last_dev_id, last_ctx = stage_ctxs[-1]
                     assert last_ctx.hidden is not None
@@ -665,6 +855,7 @@ class PyTorchDualStreamBaseline:
                         self.hidden_packed[s].copy_(h_one, non_blocking=True)
                         cp_st.synchronize()
                         self.state_t_obs[s] = t_obs_list[idx]
+                        self.state_seq_len[s] = batch_seq_lens_cpu[idx]
 
                 t_done = self.now_ns()
                 with self.stats_lock:
@@ -707,13 +898,14 @@ class PyTorchDualStreamBaseline:
             gpu_exec_ns = 0
             try:
                 with torch.no_grad(), torch.cuda.device(f_dev), torch.cuda.stream(f_st):
+                    slow_ts = [self.state_t_obs[s] for s in s_ids]
+                    cpu_seqs = [int(self.state_seq_len[s]) for s in s_ids]
                     ev0 = torch.cuda.Event(enable_timing=True)
                     ev1 = torch.cuda.Event(enable_timing=True)
                     for item in batch_items:
                         f_st.wait_event(item[3])
                     ev0.record(f_st)
                     fast_obs = torch.stack([x[2] for x in batch_items], dim=0)
-                    slow_ts = [self.state_t_obs[s] for s in s_ids]
                     p_valid = torch.zeros((B,), dtype=torch.bool, device=f_dev)
                     if self.channel.mode == "kv":
                         batch_ks = [
@@ -725,12 +917,16 @@ class PyTorchDualStreamBaseline:
                             for l in range(self.channel.layers)
                         ]
                         view = EagerDenseStateView(
-                            self.channel, batch_ks=batch_ks, batch_vs=batch_vs, prefix_valid=p_valid
+                            self.channel,
+                            batch_ks=batch_ks,
+                            batch_vs=batch_vs,
+                            prefix_valid=p_valid,
+                            cpu_seq_lens=cpu_seqs,
                         )
                     else:
                         batch_h = torch.cat([self.hidden_packed[s] for s in s_ids], dim=0)
                         view = EagerDenseStateView(
-                            self.channel, batch_hidden=batch_h, prefix_valid=p_valid
+                            self.channel, batch_hidden=batch_h, prefix_valid=p_valid, cpu_seq_lens=cpu_seqs
                         )
 
                     chunks = expert(fast_obs, view, self.zero_prefixes[f][:B])
@@ -768,8 +964,14 @@ class PyTorchDualStreamBaseline:
 
             with self.stats_lock:
                 for idx, s in enumerate(s_ids):
-                    if self.active_valid[s] and (t_done - self.active_t_obs[s] > self.horizon_ns):
+                    prev_origin = (
+                        self.active_slow_t_obs[s]
+                        if (self.anchor_to_slow_obs and self.active_slow_t_obs[s] > 0)
+                        else self.active_t_obs[s]
+                    )
+                    if self.active_valid[s] and (t_done - prev_origin > self.horizon_ns):
                         self.commit_hard_underruns += 1
                     self.active_t_obs[s] = t_obs_list[idx]
+                    self.active_slow_t_obs[s] = slow_ts[idx]
                     self.active_valid[s] = True
                     self.fast_ttac_ms.append((t_done - t_obs_list[idx]) * 1e-6)

@@ -1632,12 +1632,13 @@ void TemporalStateCache::finalize_peer_publish_batch(
     const std::vector<int32_t>& stream_ids,
     const std::vector<int32_t>& dst_global_slots,
     const std::vector<int64_t>& t_obs_ns,
-    int32_t frame_seq_len,
+    const std::vector<int32_t>& frame_seq_lens,
     cudaStream_t push_stream,
     cudaEvent_t push_done_event) {
   const int32_t B = static_cast<int32_t>(stream_ids.size());
   if (B <= 0) return;
-  if (static_cast<int32_t>(dst_global_slots.size()) != B || static_cast<int32_t>(t_obs_ns.size()) != B) {
+  if (static_cast<int32_t>(dst_global_slots.size()) != B || static_cast<int32_t>(t_obs_ns.size()) != B ||
+      static_cast<int32_t>(frame_seq_lens.size()) != B) {
     throw std::invalid_argument("finalize_peer_publish_batch vector size mismatch");
   }
   c10::cuda::CUDAGuard guard(device_id_);
@@ -1648,7 +1649,7 @@ void TemporalStateCache::finalize_peer_publish_batch(
     std::this_thread::sleep_for(std::chrono::microseconds(15));
   }
   for (int32_t b = 0; b < B; ++b) {
-    publish_write(stream_ids[b], dst_global_slots[b], t_obs_ns[b], frame_seq_len, push_stream);
+    publish_write(stream_ids[b], dst_global_slots[b], t_obs_ns[b], frame_seq_lens[b], push_stream);
   }
 }
 

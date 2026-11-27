@@ -4,11 +4,11 @@ Real-time manipulation benchmark via robocurve/inspect-robots on standard LIBERO
 
 Measures how inference latency impacts both Task Completion Time (Time-to-Success, stall ratio,
 and Throughput in tasks/min/GPU) and Dynamic-Target Success Rate on identical pretrained VLA
-weights (`lerobot/pi05_libero_finetuned_v044`, 3.3B BF16) across 4 deployment strategies:
+weights across 4 deployment strategies:
   1. `SyncChunk (K=10)`   : Standard synchronous open-loop chunking (10 steps = 500 ms per chunk)
   2. `CompiledSync (K=4)` : `torch.compile`-accelerated synchronous reactive chunking (4 steps = 200 ms)
   3. `PyTorchAsync (SDPA)`: Asynchronous Python dual-stream (`SDPA` + per-stream lock, 10 Hz Slow / 5 Hz Fast)
-  4. `Tempo (Engine)`     : `tempo.Engine` (C++ scheduler + <2 ms VLM slicing + paged KV + CUDA Graph + RTC)
+  4. `Tempo (Engine)`     : `tempo.Engine` (C++ scheduler + <2 ms VLM slicing + paged KV + CUDA Graph Fast + RTCHorizonRing)
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import pathlib
 import shutil
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
@@ -56,9 +56,9 @@ from benchmarks.baselines import (
     PyTorchDualStreamBaseline,
 )
 from tempo import Engine
-from tempo.models.base import ModelRegistry
+from tempo.models.base import ModelRegistry, SlowBackbone
 from tempo.models.hub import load_hf_tokenizer, resolve_checkpoint
-from tempo.models.pi05 import discretize_pi05_state
+from tempo.models.pi05 import discretize_pi05_state, encode_pi05_prompt_ids
 
 legacy: Any = None
 get_libero_path: Any = None
@@ -123,11 +123,47 @@ CANONICAL_SUITES: Tuple[str, ...] = (
     "libero_10",
 )
 
-CANONICAL_SPEEDS: Tuple[Tuple[str, float], ...] = (
-    ("003", 0.03),
-    ("006", 0.06),
-    ("009", 0.09),
+CANONICAL_TARGET_KINDS: Tuple[str, ...] = (
+    "movable_object",
+    "fixture_body",
+    "articulated_fixture_body",
 )
+
+
+def parse_speeds_arg(spec: str) -> List[Tuple[str, float]]:
+    out: List[Tuple[str, float]] = []
+    seen = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        val = float(part)
+        if val <= 0.0:
+            raise ValueError(f"Target speed_mps must be positive, got {val}")
+        lbl = f"{int(round(val * 100.0)):03d}"
+        if lbl in seen:
+            raise ValueError(f"Duplicate speed label {lbl!r} in --speeds {spec!r}")
+        seen.add(lbl)
+        out.append((lbl, val))
+    if not out:
+        raise ValueError("--speeds must specify at least one speed in m/s")
+    return out
+
+_BG_INSTRUCTIONS: Tuple[str, ...] = (
+    "pick up the black bowl between the plate and the ramekin and place it on the plate",
+    "pick up the alphabet soup and place it in the basket",
+    "put the wine bottle on top of the cabinet",
+    "put both the alphabet soup and the tomato sauce in the basket",
+    "pick up the cream cheese and place it in the basket",
+    "put the bowl on the stove",
+    "put the yellow and white mug in the microwave and close it",
+    "pick up the book and place it in the back compartment of the caddy",
+)
+
+
+def _format_dynamic_bench_desc(n_tasks: int, n_families: int, speeds_mps: Sequence[float]) -> str:
+    spd_str = " / ".join(f"{s:g}" for s in sorted({round(float(x), 4) for x in speeds_mps if x > 0.0}))
+    return f"LIBERO-Dynamic ({n_tasks} tasks x {n_families} motion families x {spd_str} m/s @ 20 Hz real-time)"
 
 
 def load_mean_std_stats(
@@ -138,18 +174,18 @@ def load_mean_std_stats(
     pre = load_file(str(ckpt_dir / preproc_fname), device="cpu")
     post = load_file(str(ckpt_dir / postproc_fname), device="cpu")
     return {
-        "state_mean": pre["observation.state.mean"].float(),
-        "state_std": pre["observation.state.std"].float(),
-        "action_mean": post["action.mean"].float(),
-        "action_std": post["action.std"].float(),
+        "state_mean": pre["observation.state.mean"].float()[:8],
+        "state_std": pre["observation.state.std"].float()[:8],
+        "action_mean": post["action.mean"].float()[:7],
+        "action_std": post["action.std"].float()[:7],
     }
 
 
 def resize_square_rgb(img_hwc_uint8: np.ndarray, target_hw: int) -> torch.Tensor:
     t = torch.from_numpy(np.ascontiguousarray(img_hwc_uint8)).permute(2, 0, 1).unsqueeze(0).float()
     if t.shape[-2] != target_hw or t.shape[-1] != target_hw:
-        t = F.interpolate(t, size=(target_hw, target_hw), mode="bilinear", align_corners=False)
-    return t.squeeze(0).clamp(0.0, 255.0).to(torch.uint8).contiguous()
+        t = F.interpolate(t, size=(target_hw, target_hw), mode="bilinear", align_corners=False, antialias=True)
+    return t.squeeze(0).round().clamp(0.0, 255.0).to(torch.uint8).contiguous()
 
 
 def quat2axisangle_np(quat: np.ndarray) -> np.ndarray:
@@ -224,6 +260,8 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
         self._step_count: int = 0
         self._ep_stall_s: float = 0.0
         self._ep_max_disp_m: float = 0.0
+        self._spec_moving_target: str = ""
+        self._spec_target_role: str = "static"
         self._ep_success: bool = False
         self._ep_recorded: bool = True
         self._target_init_pos: Dict[str, np.ndarray] = {}
@@ -295,6 +333,9 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
             "sim_host_wall_s": round(raw_wall_s, 4),
             "sim_paused_s": round(self._ep_paused_s, 4),
             "max_target_disp_m": round(self._ep_max_disp_m, 4),
+            "instruction": self._instruction,
+            "moving_body": self._spec_moving_target,
+            "target_role": self._spec_target_role,
             **pol_tel,
         }
         self.episode_records.append(rec)
@@ -313,11 +354,12 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
         self._close_env()
 
     def _measure_target_disp(self) -> None:
-        if self._env is None:
+        if self._env is None or not self._spec_moving_target:
             return
+        spec = self._spec_moving_target
         for b_id in range(int(self._env.sim.model.nbody)):
             name = str(self._env.sim.model.body_id2name(b_id) or "")
-            if not name or name.startswith(("world", "table", "robot0", "gripper0", "mount0", "floor")):
+            if not (name == spec or name.startswith(f"{spec}_")):
                 continue
             pos = np.asarray(self._env.sim.data.body_xpos[b_id], dtype=np.float64).copy()
             if name not in self._target_init_pos:
@@ -339,6 +381,16 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
             scene_key = str(meta["scene_key"])
             speed_label = str(meta["speed_label"])
             item = self._items_by_id[scene_key]
+            task_cfg = item["task_cfg"]
+            target_obj = str(task_cfg["target_object_name"])
+            target_kind = str(task_cfg["target_kind"])
+            if not target_obj or target_kind not in CANONICAL_TARGET_KINDS:
+                raise ValueError(
+                    f"Invalid LIBERO-Dynamic task_cfg for {scene_key}: "
+                    f"target_object_name={target_obj!r}, target_kind={target_kind!r}"
+                )
+            self._spec_moving_target = target_obj
+            self._spec_target_role = target_kind
             dyn_args = self._dyn_args_by_speed[speed_label]
             ep = RealtimeEpisode(item, dyn_args, worker_slot=0)
             ep._configure_env_selection()
@@ -357,6 +409,8 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
             raw_obs, *_ = ep._setup_world(env, init_states[init_idx])
             self._ep = ep
         else:
+            self._spec_moving_target = ""
+            self._spec_target_role = "static"
             for env_k in (
                 "LIBERO_DYNAMIC_CONFIG",
                 "LIBERO_DYNAMIC_TRAJ_INDEX",
@@ -482,39 +536,100 @@ class LiberoRealtimeEmbodiment(EmbodimentBase):
 class ModelPreprocHelper:
     """Shared camera/state normalization and action unnormalization for Pi0.5."""
 
-    def __init__(self, ckpt_dir: pathlib.Path) -> None:
+    def __init__(
+        self,
+        ckpt_dir: pathlib.Path,
+        cfg_dict: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.ckpt_dir = ckpt_dir
-        self._aux_stream = torch.cuda.Stream(device="cuda:0")
-        self.img_size = 224
-        self.stats = load_mean_std_stats(
-            ckpt_dir,
-            "policy_preprocessor_step_2_normalizer_processor.safetensors",
-            "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
-        )
+        cfg = cfg_dict if cfg_dict is not None else json.loads((ckpt_dir / "config.json").read_text(encoding="utf-8"))
+        if str(cfg.get("type", "pi05")) != "pi05":
+            raise ValueError(f"ModelPreprocHelper requires a pi05 checkpoint, got type={cfg.get('type')!r}")
+        img_res = cfg.get("image_resolution", [224, 224])
+        self.img_size = int(img_res[0]) if isinstance(img_res, (list, tuple)) and img_res else 224
+        # OpenPI's pi05_libero (Pi0Config(pi05=True, discrete_state_input=False)) is vision-language-only
+        # (no continuous state_proj and state=None in TokenizePrompt); LeRobot pi0.5 sets discrete_state_input=True.
+        self.discrete_state_input: bool = bool(cfg.get("discrete_state_input", True))
+        norm_map = cfg.get("normalization_mapping", {})
+        self.use_quantiles: bool = isinstance(norm_map, dict) and norm_map.get("ACTION") == "QUANTILES"
+        if self.use_quantiles:
+            raw_ns = json.loads((ckpt_dir / "norm_stats.json").read_text(encoding="utf-8"))
+            ns = raw_ns.get("norm_stats", raw_ns)
+            st_q01 = torch.tensor(ns["state"]["q01"], dtype=torch.float32)
+            st_q99 = torch.tensor(ns["state"]["q99"], dtype=torch.float32)
+            ac_q01 = torch.tensor(ns["actions"]["q01"], dtype=torch.float32)
+            ac_q99 = torch.tensor(ns["actions"]["q99"], dtype=torch.float32)
+            if st_q01.numel() < 8 or st_q99.numel() < 8:
+                raise ValueError(f"Expected >=8 state quantile entries, got {st_q01.numel()}/{st_q99.numel()}")
+            if ac_q01.numel() < 7 or ac_q99.numel() < 7:
+                raise ValueError(f"Expected >=7 action quantile entries, got {ac_q01.numel()}/{ac_q99.numel()}")
+            self._st_q01 = st_q01[:8]
+            self._st_q99 = st_q99[:8]
+            self._ac_q01 = ac_q01[:7]
+            self._ac_q99 = ac_q99[:7]
+            self.stats = {}
+        else:
+            self.stats = load_mean_std_stats(
+                ckpt_dir,
+                "policy_preprocessor_step_2_normalizer_processor.safetensors",
+                "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
+            )
         self.tok = load_hf_tokenizer("mlx-community/paligemma-3b-mix-224-8bit", checkpoint_dir=ckpt_dir)
 
     def prompt_len_for(self, instruction: str) -> int:
-        # Use 3-digit bins ('255') across all 32 state slots so runtime token length never exceeds prompt_len
-        worst_norm_st = torch.full((32,), 2.0, dtype=torch.float32)
         cleaned = instruction.strip().replace("_", " ").replace("\n", " ")
-        p = f"Task: {cleaned}, State: {discretize_pi05_state(worst_norm_st, 32)};\nAction: "
-        return len(self.tok.encode(p).ids) + 8
+        if self.discrete_state_input:
+            # Use 3-digit bins ('255') across all 32 state slots so runtime token length never exceeds prompt_len
+            worst_norm_st = torch.full((32,), 2.0, dtype=torch.float32)
+            p = f"Task: {cleaned}, State: {discretize_pi05_state(worst_norm_st, 32)};\nAction: "
+        else:
+            p = f"{cleaned}\n"
+        raw_len = len(encode_pi05_prompt_ids(self.tok, p)) + 8
+        return ((raw_len + 7) // 8) * 8
 
     def prepare_inputs(self, obs: Observation) -> Tuple[torch.Tensor, torch.Tensor, str]:
         c1 = resize_square_rgb(obs.images["agentview"], self.img_size)
         c2 = resize_square_rgb(obs.images["wrist"], self.img_size)
         cams = torch.stack([c1, c2], dim=0)
         st = torch.from_numpy(np.asarray(obs.state["eef_state"], dtype=np.float32))
-        norm_st = (st - self.stats["state_mean"]) / (self.stats["state_std"] + 1e-8)
+        if self.use_quantiles:
+            norm_st = (st - self._st_q01) / (self._st_q99 - self._st_q01 + 1e-6) * 2.0 - 1.0
+        else:
+            norm_st = (st - self.stats["state_mean"]) / (self.stats["state_std"] + 1e-8)
         return cams, norm_st, str(obs.instruction or "")
 
-    def update_slow_stage(self, slow_stage: Any, instruction: str, norm_st: torch.Tensor) -> None:
-        with torch.cuda.device("cuda:0"), torch.cuda.stream(self._aux_stream):
-            slow_stage.set_prompt(instruction, state=norm_st)
-        self._aux_stream.synchronize()
+    def update_slow_stage(
+        self,
+        slow_stage: Any,
+        instruction: str,
+        norm_st: torch.Tensor,
+        *,
+        stream_id: Optional[int] = None,
+    ) -> None:
+        slow_stage.set_prompt(
+            instruction,
+            state=(norm_st if self.discrete_state_input else None),
+            stream_id=stream_id,
+        )
+
+    def init_background_prompts(self, slow_stage: Any, num_streams: int) -> None:
+        if isinstance(slow_stage, SlowBackbone):
+            slow_stage.ensure_stream_capacity(num_streams)
+        for s in range(num_streams):
+            bg_instr = _BG_INSTRUCTIONS[s % len(_BG_INSTRUCTIONS)]
+            bg_st = torch.linspace(-0.5, 0.5, 8, dtype=torch.float32) + 0.05 * float(s)
+            slow_stage.set_prompt(
+                bg_instr,
+                state=(bg_st if self.discrete_state_input else None),
+                stream_id=s,
+            )
 
     def unnormalize_action(self, norm_act: torch.Tensor) -> np.ndarray:
-        act = norm_act.detach().cpu().float() * (self.stats["action_std"] + 1e-8) + self.stats["action_mean"]
+        x = norm_act.detach().cpu().float()[:7]
+        if self.use_quantiles:
+            act = (x + 1.0) * 0.5 * (self._ac_q99 - self._ac_q01 + 1e-6) + self._ac_q01
+        else:
+            act = x * (self.stats["action_std"] + 1e-8) + self.stats["action_mean"]
         return np.clip(act.numpy(), -1.0, 1.0).astype(np.float32)
 
 
@@ -542,8 +657,9 @@ class SyncChunkPolicy(PolicyBase):
             prompt_len=prompt_len,
         )
         self.slow_stage = self.dep.slow_replicas[0][0]
+        self.helper.init_background_prompts(self.slow_stage, self.num_streams)
         raw_fast = self.dep.fast_shards[0]
-        self.fast_head = torch.compile(raw_fast, dynamic=False) if compile_fast else raw_fast
+        self.fast_head = torch.compile(raw_fast, dynamic=True) if compile_fast else raw_fast
         self.dev = torch.device("cuda:0")
         tag = "compiled-sync" if compile_fast else "sync-chunk"
         self.info = PolicyInfo(
@@ -556,6 +672,7 @@ class SyncChunkPolicy(PolicyBase):
         self.config = PolicyConfig(action_horizon=chunk_horizon)
         self.infer_latencies_ms: List[float] = []
         self._ep_infer_ms: List[float] = []
+        self._ep_step: int = 0
         self._reset_hook: Optional[Callable[[], None]] = None
 
         with torch.no_grad():
@@ -565,15 +682,29 @@ class SyncChunkPolicy(PolicyBase):
             self.slow_stage(w_obs, ctx)
             ks = [ctx.kv_by_layer[i][0] for i in range(self.dep.channel.layers)]
             vs = [ctx.kv_by_layer[i][1] for i in range(self.dep.channel.layers)]
-            view = EagerDenseStateView(
-                self.dep.channel,
-                batch_ks=ks,
-                batch_vs=vs,
-                prefix_valid=torch.zeros((B,), dtype=torch.bool, device=self.dev),
-            )
             noise = torch.randn((B, *self.dep.fast_obs_shape), dtype=torch.bfloat16, device=self.dev)
-            pref = torch.zeros((B, 2, self.dep.action_dim), dtype=torch.bfloat16, device=self.dev)
-            for _ in range(2):
+            pref = torch.zeros((B, 0, self.dep.action_dim), dtype=torch.bfloat16, device=self.dev)
+            pref_valid = torch.zeros((B,), dtype=torch.bool, device=self.dev)
+            full_s = int(ks[0].size(1))
+            half_s = max(1, full_s // 2)
+            warmup_specs: List[List[int]] = [[full_s] * B, [half_s] * B]
+            if self.compile_fast and B > 1 and full_s > 1:
+                warmup_specs.extend(
+                    [
+                        [half_s, *([full_s] * (B - 1))],
+                        [max(1, full_s - 1), *([half_s] * (B - 1))],
+                    ]
+                )
+            for cpu_sl in warmup_specs:
+                w_sl = torch.tensor(cpu_sl, dtype=torch.int32, device=self.dev)
+                view = EagerDenseStateView(
+                    self.dep.channel,
+                    batch_ks=ks,
+                    batch_vs=vs,
+                    prefix_valid=pref_valid,
+                    seq_lens=w_sl,
+                    cpu_seq_lens=cpu_sl,
+                )
                 self.fast_head(noise, view, pref)
             torch.cuda.synchronize(self.dev)
 
@@ -601,6 +732,7 @@ class SyncChunkPolicy(PolicyBase):
 
     def reset(self, scene: Scene) -> None:
         self._ep_infer_ms.clear()
+        self._ep_step = 0
         if self._reset_hook is not None:
             self._reset_hook()
 
@@ -608,7 +740,9 @@ class SyncChunkPolicy(PolicyBase):
     def act(self, observation: Observation) -> ActionChunk:
         t0 = time.perf_counter()
         cams, norm_st, instr = self.helper.prepare_inputs(observation)
-        self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
+        if self._ep_step == 0 or self.helper.discrete_state_input:
+            self.helper.update_slow_stage(self.slow_stage, instr, norm_st, stream_id=0)
+        self._ep_step += 1
 
         B = self.num_streams
         obs_b = (cams.to(self.dev, dtype=torch.bfloat16) / 255.0).unsqueeze(0).expand(B, -1, -1, -1, -1).contiguous()
@@ -617,14 +751,17 @@ class SyncChunkPolicy(PolicyBase):
 
         ks = [ctx.kv_by_layer[i][0] for i in range(self.dep.channel.layers)]
         vs = [ctx.kv_by_layer[i][1] for i in range(self.dep.channel.layers)]
+        cpu_seq_lens = [self.slow_stage.get_stream_prompt_meta(i)[0] for i in range(B)]
         view = EagerDenseStateView(
             self.dep.channel,
             batch_ks=ks,
             batch_vs=vs,
             prefix_valid=torch.zeros((B,), dtype=torch.bool, device=self.dev),
+            seq_lens=ctx.seq_lens,
+            cpu_seq_lens=cpu_seq_lens,
         )
         noise = torch.randn((B, *self.dep.fast_obs_shape), dtype=torch.bfloat16, device=self.dev)
-        frozen_pref = torch.zeros((B, 2, self.dep.action_dim), dtype=torch.bfloat16, device=self.dev)
+        frozen_pref = torch.zeros((B, 0, self.dep.action_dim), dtype=torch.bfloat16, device=self.dev)
         chunk_out = self.fast_head(noise, view, frozen_pref)
         torch.cuda.synchronize(self.dev)
         lat_s = time.perf_counter() - t0
@@ -640,7 +777,7 @@ class SyncChunkPolicy(PolicyBase):
 
 
 class PyTorchAsyncPolicy(PolicyBase):
-    """Asynchronous PyTorch Dual-Stream (SDPA + per-stream lock) policy (10 Hz Slow VLM, 5 Hz Fast chunk)."""
+    """Asynchronous PyTorch Dual-Stream (SDPA + per-stream lock) policy (default 10 Hz Slow, 5 Hz Fast)."""
 
     def __init__(
         self,
@@ -663,13 +800,14 @@ class PyTorchAsyncPolicy(PolicyBase):
             prompt_len=prompt_len,
         )
         self.slow_stage = self.dep.slow_replicas[0][0]
+        self.helper.init_background_prompts(self.slow_stage, self.num_streams)
         self.dev = torch.device("cuda:0")
         self._fg_stream = torch.cuda.Stream(device=self.dev)
         self.base = PyTorchDualStreamBaseline(
             self.dep.channel,
             action_dim=self.dep.action_dim,
             horizon_steps=self.dep.chunk_size,
-            prefix_steps=2,
+            prefix_steps=0,
             slow_devices=[[0]],
             fast_devices=[0],
             slow_replicas=self.dep.slow_replicas,
@@ -679,6 +817,8 @@ class PyTorchAsyncPolicy(PolicyBase):
             max_fast_batch_size=max(4, self.num_streams),
             deadline_ms=45.0,
             step_dt_ms=50.0,
+            interpolate=False,
+            anchor_to_slow_obs=True,
         )
         self.base.start()
         with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
@@ -686,15 +826,11 @@ class PyTorchAsyncPolicy(PolicyBase):
                 torch.rand(self.dep.slow_obs_shape, dtype=torch.bfloat16, device=self.dev)
                 for _ in range(max(0, self.num_streams - 1))
             ]
-            self._bg_fast_obs = [
-                torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
-                for _ in range(max(0, self.num_streams - 1))
-            ]
         self._fg_stream.synchronize()
         self._reset_hook: Optional[Callable[[], None]] = None
         self._step_idx = 0
         self.info = PolicyInfo(
-            name=f"pytorch-async-n{num_streams}",
+            name=f"pytorch-async-k{fast_every_steps}-n{num_streams}",
             action_space=ACTION_SPACE,
             observation_space=OBS_SPACE,
             control_hz=20.0,
@@ -771,10 +907,12 @@ class PyTorchAsyncPolicy(PolicyBase):
         cams, norm_st, instr = self.helper.prepare_inputs(observation)
 
         if self._step_idx == 0:
-            self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
+            self.helper.update_slow_stage(self.base, instr, norm_st, stream_id=0)
             with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
                 obs_bf16 = cams.to(self.dev, dtype=torch.bfloat16) / 255.0
-                noise = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
+                noise_batch = torch.randn(
+                    (self.num_streams, *self.dep.fast_obs_shape), dtype=torch.bfloat16, device=self.dev
+                )
             self._fg_stream.synchronize()
 
             t_ns = self.base.now_ns()
@@ -787,10 +925,7 @@ class PyTorchAsyncPolicy(PolicyBase):
                     raise TimeoutError("PyTorchAsyncPolicy timed out waiting for initial Slow state")
                 time.sleep(0.001)
 
-            t_fast_ns = self.base.now_ns()
-            self.base.push_fast(noise, stream_id=0, t_obs_ns=t_fast_ns)
-            for s in range(1, self.num_streams):
-                self.base.push_fast(self._bg_fast_obs[s - 1], stream_id=s, t_obs_ns=t_fast_ns)
+            t_fast_ns = self.base.push_fast_batch(noise_batch)
             deadline = time.monotonic() + 15.0
             while True:
                 with self.base.stats_lock:
@@ -801,28 +936,36 @@ class PyTorchAsyncPolicy(PolicyBase):
                     raise TimeoutError("PyTorchAsyncPolicy timed out waiting for initial Fast chunk")
                 time.sleep(0.001)
 
-            act_t, *_ = self.base.sample_actions(self.base.now_ns())
+            act_t, *_ = self.base.sample_actions(t_ns)
             with self.base.stats_lock:
                 self.base.fast_ttac_ms.clear()
                 self.base.commit_hard_underruns = 0
+            if self.fast_every_steps == 1:
+                with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
+                    next_noise = torch.randn(
+                        (self.num_streams, *self.dep.fast_obs_shape), dtype=torch.bfloat16, device=self.dev
+                    )
+                self._fg_stream.synchronize()
+                self.base.push_fast_batch(next_noise)
         else:
             now_ns = self.base.now_ns()
-            if self._step_idx % self.slow_every_steps == 1:
-                self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
+            if (self._step_idx + 1) % self.slow_every_steps == 0:
+                if self.helper.discrete_state_input:
+                    self.helper.update_slow_stage(self.base, instr, norm_st, stream_id=0)
                 with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
                     obs_bf16 = cams.to(self.dev, dtype=torch.bfloat16) / 255.0
                 self._fg_stream.synchronize()
                 self.base.push_slow(obs_bf16, stream_id=0, t_obs_ns=now_ns)
                 for s in range(1, self.num_streams):
                     self.base.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=now_ns)
-            if self._step_idx % self.fast_every_steps == 0:
+            if (self._step_idx + 1) % self.fast_every_steps == 0:
                 with torch.cuda.device(self.dev), torch.cuda.stream(self._fg_stream):
-                    noise = torch.randn(self.dep.fast_obs_shape, dtype=torch.bfloat16, device=self.dev)
+                    noise_batch = torch.randn(
+                        (self.num_streams, *self.dep.fast_obs_shape), dtype=torch.bfloat16, device=self.dev
+                    )
                 self._fg_stream.synchronize()
-                self.base.push_fast(noise, stream_id=0, t_obs_ns=now_ns)
-                for s in range(1, self.num_streams):
-                    self.base.push_fast(self._bg_fast_obs[s - 1], stream_id=s, t_obs_ns=now_ns)
-            act_t, _fa, _sa, u = self.base.sample_actions(self.base.now_ns())
+                self.base.push_fast_batch(noise_batch, t_obs_ns=now_ns)
+            act_t, _fa, _sa, u = self.base.sample_actions(now_ns)
             self.underruns += int(u)
             self._ep_underruns += int(u)
 
@@ -839,7 +982,7 @@ class PyTorchAsyncPolicy(PolicyBase):
 
 
 class TempoPolicy(PolicyBase):
-    """Tempo Engine reactive policy: sliced VLM (10 Hz) + lock-free cache + CUDA Graph Fast (5 Hz) + RTC."""
+    """Tempo Engine reactive policy: 1-slot Slow mailbox + lock-free paged KV + CUDA Graph Fast + RTCHorizonRing."""
 
     def __init__(
         self,
@@ -862,23 +1005,27 @@ class TempoPolicy(PolicyBase):
             slow_rate_hz=20.0 / float(slow_every_steps),
             fast_rate_hz=20.0 / float(fast_every_steps),
             deadline_ms=45.0,
+            max_slice_ms=2.0,
+            slow_batch_size=min(4, num_streams),
             step_dt_ms=50.0,
             fast_precision="bf16",
+            interpolate_actions=False,
+            anchor_to_slow_obs=True,
             model_kwargs={"prompt_len": prompt_len},
         )
         assert self.engine.deployment is not None
-        self.slow_stage = self.engine.deployment.slow_replicas[0][0]
+        self.helper.init_background_prompts(self.engine, self.num_streams)
         sib_stream = torch.cuda.Stream(device="cuda:0")
         with torch.cuda.device("cuda:0"), torch.cuda.stream(sib_stream):
             self._bg_slow_obs = [
-                torch.randint(0, 256, self.engine.slow_obs_shape, dtype=torch.uint8, device="cuda:0")
+                torch.rand(self.engine.slow_obs_shape, dtype=torch.bfloat16, device="cuda:0")
                 for _ in range(max(0, self.num_streams - 1))
             ]
         sib_stream.synchronize()
         self._reset_hook: Optional[Callable[[], None]] = None
         self._step_idx = 0
         self.info = PolicyInfo(
-            name=f"tempo-n{num_streams}",
+            name=f"tempo-k{fast_every_steps}-n{num_streams}",
             action_space=ACTION_SPACE,
             observation_space=OBS_SPACE,
             control_hz=20.0,
@@ -932,7 +1079,7 @@ class TempoPolicy(PolicyBase):
             self.fast_ttac_ms.extend(self.engine.telemetry().fast_ttac_ms)
             self._ep_telemetry_drained = True
         self.engine.stop()
-        del self.slow_stage, self.engine
+        del self.engine
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -953,24 +1100,26 @@ class TempoPolicy(PolicyBase):
         cams, norm_st, instr = self.helper.prepare_inputs(observation)
 
         if self._step_idx == 0:
-            self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
+            self.helper.update_slow_stage(self.engine, instr, norm_st, stream_id=0)
             t_ns = self.engine.now_ns()
             self.engine.push_slow(cams, stream_id=0, t_obs_ns=t_ns)
             for s in range(1, self.num_streams):
                 self.engine.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=t_ns)
             self.engine.wait_ready()
             self.engine.reset_stats()
-            actions, *_ = self.engine.sample_actions(cpu=True)
+            actions, *_ = self.engine.sample_actions(t_ns, cpu=True)
+            if self.fast_every_steps == 1:
+                self.engine.push_fast_batch()
         else:
             now_ns = self.engine.now_ns()
-            if self._step_idx % self.slow_every_steps == 1:
-                self.helper.update_slow_stage(self.slow_stage, instr, norm_st)
+            if (self._step_idx + 1) % self.slow_every_steps == 0:
+                if self.helper.discrete_state_input:
+                    self.helper.update_slow_stage(self.engine, instr, norm_st, stream_id=0)
                 self.engine.push_slow(cams, stream_id=0, t_obs_ns=now_ns)
                 for s in range(1, self.num_streams):
                     self.engine.push_slow(self._bg_slow_obs[s - 1], stream_id=s, t_obs_ns=now_ns)
-            if self._step_idx % self.fast_every_steps == 0:
-                for s in range(self.num_streams):
-                    self.engine.push_fast(stream_id=s, t_obs_ns=now_ns)
+            if (self._step_idx + 1) % self.fast_every_steps == 0:
+                self.engine.push_fast_batch(t_obs_ns=now_ns)
             actions, _fa, _sa, u = self.engine.sample_actions(now_ns, cpu=True)
             self.underruns += int(u)
             self._ep_underruns += int(u)
@@ -1240,6 +1389,8 @@ def _load_resumed_records(
     suite_tag: str,
     policy_label: str,
     num_streams: int,
+    model_label: str,
+    expected_ids: Set[str],
 ) -> Tuple[Dict[str, Dict[str, Any]], List[float], List[float], List[float]]:
     if live_jsonl is None or not live_jsonl.exists():
         return {}, [], [], []
@@ -1249,13 +1400,19 @@ def _load_resumed_records(
         if not line:
             continue
         row = json.loads(line)
+        if row.get("_model_label") != model_label:
+            raise ValueError(
+                f"Refusing to mix checkpoints in {live_jsonl}: row has _model_label={row.get('_model_label')!r}, "
+                f"current run has model_label={model_label!r}"
+            )
+        sid = str(row.get("scene_id") or "")
         if (
             row.get("_suite_tag") == suite_tag
             and row.get("_policy_label") == policy_label
             and int(row.get("_num_streams", -1)) == num_streams
-            and row.get("scene_id")
+            and sid in expected_ids
         ):
-            resumed_raw_rows[str(row["scene_id"])] = row
+            resumed_raw_rows[sid] = row
 
     resumed: Dict[str, Dict[str, Any]] = {}
     raw_chunk_ms: List[float] = []
@@ -1279,9 +1436,11 @@ def evaluate_policy_suite(
     log_dir: pathlib.Path,
     live_jsonl: Optional[pathlib.Path] = None,
     keep_raw_samples: bool = False,
+    model_label: str = "lerobot/pi05_libero_finetuned_v044",
 ) -> Dict[str, Any]:
+    expected_ids = {sc.id for scenes, _ in groups.values() for sc in scenes}
     resumed_by_id, raw_chunk_ms, raw_ttac_ms, raw_act_us = _load_resumed_records(
-        live_jsonl, suite_tag, policy_label, num_streams
+        live_jsonl, suite_tag, policy_label, num_streams, model_label, expected_ids
     )
     pending_groups: Dict[str, Tuple[List[Scene], int]] = {}
     for grp_name, (scenes, grp_max_steps) in groups.items():
@@ -1302,13 +1461,28 @@ def evaluate_policy_suite(
         policy = policy_factory()
         embodiment.clear_records()
 
+        live_done = len(resumed_by_id)
+        live_succ = sum(1 for r in resumed_by_id.values() if r.get("success"))
+        total_target = sum(len(sc_l) for sc_l, _ in groups.values())
+
         def _on_ep(rec: Dict[str, Any]) -> None:
+            nonlocal live_done, live_succ
+            live_done += 1
+            if rec.get("success"):
+                live_succ += 1
+            if live_done % 5 == 0 or live_done == total_target:
+                print(
+                    f"    [{policy_label}] {live_done}/{total_target} ep | "
+                    f"succ={live_succ}/{live_done} ({100.0 * live_succ / live_done:.1f}%)",
+                    flush=True,
+                )
             if live_jsonl is not None:
                 live_jsonl.parent.mkdir(parents=True, exist_ok=True)
                 payload = {
                     "_suite_tag": suite_tag,
                     "_policy_label": policy_label,
                     "_num_streams": num_streams,
+                    "_model_label": model_label,
                     "_ts": round(time.time(), 2),
                     **rec,
                 }
@@ -1355,7 +1529,6 @@ def evaluate_policy_suite(
             embodiment.bind_policy(None)
             policy.close()
 
-    expected_ids = {sc.id for scenes, _ in groups.values() for sc in scenes}
     got_ids = {str(r["scene_id"]) for r in all_recs}
     if got_ids != expected_ids:
         missing = sorted(expected_ids - got_ids)
@@ -1382,6 +1555,7 @@ def evaluate_policy_suite(
         has_underruns=("Async" in policy_label or "Tempo" in policy_label),
         total_underruns=total_underruns,
         keep_raw_samples=keep_raw_samples,
+        model_label=model_label,
     )
 
 
@@ -1398,6 +1572,7 @@ def build_suite_result(
     has_underruns: bool,
     total_underruns: int,
     keep_raw_samples: bool = False,
+    model_label: str = "lerobot/pi05_libero_finetuned_v044",
 ) -> Dict[str, Any]:
     per_group: Dict[str, Any] = {}
     for grp_name in group_names:
@@ -1423,17 +1598,22 @@ def build_suite_result(
             per_suite[s_name] = summarize_records(s_recs, num_streams)
 
     per_motion_family: Dict[str, Any] = {}
+    per_target_role: Dict[str, Any] = {}
     if suite_tag == "LIBERO-Dynamic":
         for fam in ("l1", "l2", "l3"):
             f_recs = [r for r in all_recs if r.get("level") == fam]
             if f_recs:
                 per_motion_family[fam] = summarize_records(f_recs, num_streams)
+        for role in CANONICAL_TARGET_KINDS:
+            role_recs = [r for r in all_recs if r.get("target_role") == role]
+            if role_recs:
+                per_target_role[role] = summarize_records(role_recs, num_streams)
 
     overall = summarize_records(all_recs, num_streams)
     result: Dict[str, Any] = {
         "suite": suite_tag,
         "policy": policy_label,
-        "model": "lerobot/pi05_libero_finetuned_v044",
+        "model": model_label,
         "num_streams": num_streams,
         **overall,
         "per_group": per_group,
@@ -1441,6 +1621,8 @@ def build_suite_result(
     }
     if per_motion_family:
         result["per_motion_family"] = per_motion_family
+    if per_target_role:
+        result["per_target_role"] = per_target_role
     result["episodes_detail"] = all_recs
 
     if raw_chunk_ms:
@@ -1498,7 +1680,6 @@ def merge_shard_files(shard_paths: Sequence[pathlib.Path], out_path: pathlib.Pat
     )
 
     suite_rank = {s: idx for idx, s in enumerate(CANONICAL_SUITES)}
-    speed_rank = {f"speed_{lbl}": idx for idx, (lbl, _) in enumerate(CANONICAL_SPEEDS)}
 
     merged_runs: List[Dict[str, Any]] = []
     for suite_tag, pol_label, n_streams in sorted_keys:
@@ -1527,6 +1708,11 @@ def merge_shard_files(shard_paths: Sequence[pathlib.Path], out_path: pathlib.Pat
             all_recs.sort(key=lambda r: (suite_rank.get(r["suite"], 99), int(r["task_id"]), int(r["init_idx"])))
             grp_names = list(CANONICAL_SUITES)
         else:
+            dyn_grp_pairs = sorted(
+                {(float(r.get("speed_mps", 0.0)), str(r["group"])) for r in all_recs}
+            )
+            grp_names = [g for _, g in dyn_grp_pairs]
+            speed_rank = {g: idx for idx, g in enumerate(grp_names)}
             all_recs.sort(
                 key=lambda r: (
                     speed_rank.get(r["group"], 99),
@@ -1536,8 +1722,10 @@ def merge_shard_files(shard_paths: Sequence[pathlib.Path], out_path: pathlib.Pat
                     int(r["traj_index"]),
                 )
             )
-            grp_names = [f"speed_{lbl}" for lbl, _ in CANONICAL_SPEEDS]
 
+        part_models = {str(p["model"]) for p in parts}
+        if len(part_models) != 1:
+            raise ValueError(f"Mismatched models across shards for {suite_tag}/{pol_label}: {sorted(part_models)}")
         merged_runs.append(
             build_suite_result(
                 suite_tag=suite_tag,
@@ -1551,14 +1739,26 @@ def merge_shard_files(shard_paths: Sequence[pathlib.Path], out_path: pathlib.Pat
                 has_underruns=("Async" in pol_label or "Tempo" in pol_label),
                 total_underruns=sum(int(r.get("ep_underruns", 0)) for r in all_recs),
                 keep_raw_samples=False,
+                model_label=next(iter(part_models)),
             )
         )
 
     attach_paired_speedups(merged_runs)
-    static_eps = next((r["episodes"] for r in merged_runs if r["suite"] == "LIBERO-Static"), 0)
+    static_runs = [r for r in merged_runs if r["suite"] == "LIBERO-Static"]
+    static_eps = static_runs[0]["episodes"] if static_runs else 0
     dyn_runs = [r for r in merged_runs if r["suite"] == "LIBERO-Dynamic"]
     dyn_eps = dyn_runs[0]["episodes"] if dyn_runs else 0
     traj_indices = sorted({int(ep["traj_index"]) for ep in dyn_runs[0]["episodes_detail"]}) if dyn_runs else []
+    bench_descs: List[str] = []
+    if static_eps > 0:
+        n_st_tasks = len({(str(ep["suite"]), int(ep["task_id"])) for ep in static_runs[0]["episodes_detail"]})
+        bench_descs.append(f"LIBERO-Static ({n_st_tasks} tasks across spatial, object, goal, 10 @ 20 Hz real-time)")
+    if dyn_eps > 0:
+        dyn_detail = dyn_runs[0]["episodes_detail"]
+        n_dyn_tasks = len({(str(ep["suite"]), int(ep["task_id"])) for ep in dyn_detail})
+        n_dyn_fams = len({str(ep["level"]) for ep in dyn_detail})
+        dyn_speeds = [float(ep["speed_mps"]) for ep in dyn_detail]
+        bench_descs.append(_format_dynamic_bench_desc(n_dyn_tasks, n_dyn_fams, dyn_speeds))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
@@ -1572,10 +1772,7 @@ def merge_shard_files(shard_paths: Sequence[pathlib.Path], out_path: pathlib.Pat
                     "traj_indices": traj_indices,
                     "num_shards": expected_num_shards,
                 },
-                "benchmarks": [
-                    "LIBERO-Static (40 tasks across spatial, object, goal, 10 @ 20 Hz real-time)",
-                    "LIBERO-Dynamic (40 tasks x 3 motion families x 0.03 / 0.06 / 0.09 m/s @ 20 Hz real-time)",
-                ],
+                "benchmarks": bench_descs,
                 "runs": merged_runs,
             },
             indent=2,
@@ -1589,9 +1786,12 @@ def attach_paired_speedups(runs: List[Dict[str, Any]]) -> None:
     """Computes paired Time-to-Success speedup of Tempo over baselines on commonly-succeeded scenes."""
     by_key = {(r["suite"], r["num_streams"], r["policy"]): r for r in runs}
     for (suite_tag, n_s, _pol), r in by_key.items():
-        tempo_r = by_key.get((suite_tag, n_s, f"Tempo (Engine, N={n_s})"))
-        if tempo_r is None or r is tempo_r:
+        tempo_cands = [
+            v for (s, n, p), v in by_key.items() if s == suite_tag and n == n_s and p.startswith("Tempo (")
+        ]
+        if len(tempo_cands) != 1 or r is tempo_cands[0]:
             continue
+        tempo_r = tempo_cands[0]
         tempo_succ = {
             ep["scene_id"]: float(ep["wall_time_s"])
             for ep in tempo_r["episodes_detail"]
@@ -1623,9 +1823,13 @@ def _group_static_scenes(scenes: Sequence[Scene]) -> Dict[str, Tuple[List[Scene]
     return out
 
 
-def _group_dynamic_scenes(scenes: Sequence[Scene], dyn_max_steps: int) -> Dict[str, Tuple[List[Scene], int]]:
+def _group_dynamic_scenes(
+    scenes: Sequence[Scene],
+    dyn_max_steps: int,
+    speeds: Sequence[Tuple[str, float]],
+) -> Dict[str, Tuple[List[Scene], int]]:
     out: Dict[str, Tuple[List[Scene], int]] = {}
-    for speed_label, _ in CANONICAL_SPEEDS:
+    for speed_label, _ in speeds:
         g = f"speed_{speed_label}"
         sub = [sc for sc in scenes if sc.metadata.get("group") == g]
         if sub:
@@ -1636,15 +1840,42 @@ def _group_dynamic_scenes(scenes: Sequence[Scene], dyn_max_steps: int) -> Dict[s
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["smoke", "full"], default="full")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="lerobot/pi05_libero_finetuned_v044",
+        help="Hugging Face repo ID or local Pi0.5 checkpoint directory",
+    )
+    parser.add_argument(
+        "--model-label",
+        type=str,
+        default=None,
+        help="Optional display identifier recorded in JSON output (defaults to --checkpoint)",
+    )
     parser.add_argument("--dyn-repo", type=pathlib.Path, default=None, help="Path to cloned LIBERO-Dynamic repository")
     parser.add_argument("--merge-shards", type=pathlib.Path, nargs="+", default=None, help="Merge completed shard JSON files into --out-json")
+    parser.add_argument("--suites", type=str, default="static,dynamic", help="Comma-separated suites to run: static,dynamic")
+    parser.add_argument(
+        "--policies",
+        type=str,
+        default="sync,compiled_sync,pytorch_async,tempo",
+        help="Comma-separated policies to run: sync,compiled_sync,pytorch_async,tempo",
+    )
     parser.add_argument("--streams", type=str, default="1", help="Comma-separated concurrent stream counts")
+    parser.add_argument("--sync-horizon", type=int, default=10, help="Action chunk horizon K for SyncChunk baseline")
+    parser.add_argument("--slow-every-steps", type=int, default=2, help="Control steps between Slow mailbox updates")
+    parser.add_argument("--fast-every-steps", type=int, default=4, help="Control steps K between Fast chunk replans")
     parser.add_argument("--static-inits", type=str, default="0,1,2,3,4,5,6,7,8,9", help="Static LIBERO init indices")
     parser.add_argument("--traj-indices", type=str, default="0", help="LIBERO-Dynamic trajectory indices (e.g. 0 or 0,1,2,3,4)")
+    parser.add_argument("--speeds", type=str, default="0.03,0.06,0.09", help="Comma-separated target speeds in m/s")
+    parser.add_argument(
+        "--latin-probe",
+        action="store_true",
+        help="Evaluate a balanced 1/3 Latin-square subset covering all 40 tasks, 3 motion families, and 3 speeds equally",
+    )
     parser.add_argument("--dyn-max-steps", type=int, default=600, help="Max control steps per LIBERO-Dynamic episode")
     parser.add_argument("--num-shards", type=int, default=1, help="Total shards for multi-GPU parallel evaluation")
     parser.add_argument("--shard-index", type=int, default=0, help="0-based index of this shard")
-    parser.add_argument("--reverse-suite-order", action="store_true", help="Run LIBERO-Dynamic before LIBERO-Static")
     parser.add_argument("--live-jsonl", type=pathlib.Path, default=None, help="Append/resume per-episode JSONL path")
     parser.add_argument("--log-dir", type=pathlib.Path, default=None)
     parser.add_argument("--out-json", type=pathlib.Path, default=pathlib.Path("benchmarks/libero_dynamic_eval.json"))
@@ -1654,28 +1885,53 @@ def main() -> None:
         merge_shard_files(args.merge_shards, args.out_json)
         return
 
+    valid_suites = {"static", "dynamic"}
+    selected_suites = [s.strip() for s in args.suites.split(",") if s.strip()]
+    if (
+        not selected_suites
+        or len(set(selected_suites)) != len(selected_suites)
+        or any(s not in valid_suites for s in selected_suites)
+    ):
+        raise ValueError(f"--suites must be a non-empty subset of {sorted(valid_suites)}, got {args.suites!r}")
+
+    valid_policies = {"sync", "compiled_sync", "pytorch_async", "tempo"}
+    selected_policies = [p.strip() for p in args.policies.split(",") if p.strip()]
+    if (
+        not selected_policies
+        or len(set(selected_policies)) != len(selected_policies)
+        or any(p not in valid_policies for p in selected_policies)
+    ):
+        raise ValueError(f"--policies must be a non-empty subset of {sorted(valid_policies)}, got {args.policies!r}")
+
     if args.dyn_repo is None:
         parser.error("--dyn-repo is required unless --merge-shards is specified")
     _ensure_dyn_imports(args.dyn_repo)
 
     if not (0 <= args.shard_index < args.num_shards):
         raise ValueError(f"--shard-index {args.shard_index} out of range for --num-shards {args.num_shards}")
+    if args.sync_horizon < 1 or args.slow_every_steps < 1 or args.fast_every_steps < 1:
+        raise ValueError(
+            f"--sync-horizon ({args.sync_horizon}), --slow-every-steps ({args.slow_every_steps}), "
+            f"and --fast-every-steps ({args.fast_every_steps}) must all be >= 1"
+        )
 
     log_dir = args.log_dir if args.log_dir is not None else pathlib.Path(f"/tmp/inspect_logs_s{args.shard_index}")
     log_dir.mkdir(parents=True, exist_ok=True)
     args.log_dir = log_dir
     gpu_name = torch.cuda.get_device_name(0)
     print(
-        f"[RealtimeBench] GPU={gpu_name} | mode={args.mode} | shard={args.shard_index}/{args.num_shards} | log_dir={args.log_dir}",
+        f"[RealtimeBench] GPU={gpu_name} | mode={args.mode} | suites={','.join(selected_suites)} | "
+        f"policies={','.join(selected_policies)} | shard={args.shard_index}/{args.num_shards} | log_dir={args.log_dir}",
         flush=True,
     )
 
-    _, pi05_dir = resolve_checkpoint("lerobot/pi05_libero_finetuned_v044")
-    pi05_helper = ModelPreprocHelper(pi05_dir)
+    pi05_cfg, pi05_dir = resolve_checkpoint(args.checkpoint)
+    model_label = str(args.model_label or args.checkpoint)
+    pi05_helper = ModelPreprocHelper(pi05_dir, cfg_dict=pi05_cfg)
 
     stream_counts = tuple(int(x.strip()) for x in args.streams.split(",") if x.strip())
     levels = ["l1", "l2", "l3"]
-    speeds = list(CANONICAL_SPEEDS)
+    speeds = parse_speeds_arg(args.speeds)
 
     if args.mode == "smoke":
         candidate_tasks = [("libero_spatial", 0), ("libero_10", 0)]
@@ -1688,6 +1944,9 @@ def main() -> None:
         dyn_trajs = [int(x.strip()) for x in args.traj_indices.split(",") if x.strip()]
         dyn_max_steps = int(args.dyn_max_steps)
 
+    static_tasks = candidate_tasks if "static" in selected_suites else []
+    dyn_tasks = candidate_tasks if "dynamic" in selected_suites else []
+
     work_dir = pathlib.Path(f"/tmp/libero_dyn_work_s{args.shard_index}")
     os.environ["LIBERO_DYNAMIC_LOG_DIR"] = str(work_dir / "libero_dynamic_logs")
     os.environ["LIBERO_DYNAMIC_AUTO_FINALIZE"] = "false"
@@ -1696,17 +1955,39 @@ def main() -> None:
         work_dir,
         levels,
         speeds,
-        candidate_tasks,
+        static_tasks,
         static_inits,
-        candidate_tasks,
+        dyn_tasks,
         dyn_trajs,
         dyn_max_steps,
     )
-    if not all_dyn_scenes:
+    if "static" in selected_suites and not all_static_scenes:
+        raise RuntimeError("No LIBERO-Static scenes were built; check --static-inits!")
+    if "dynamic" in selected_suites and not all_dyn_scenes:
         raise RuntimeError("No LIBERO-Dynamic scenes were built; check config discovery!")
 
-    # Compute uniform prompt_len across the ENTIRE unsharded benchmark so all shards compile identical shapes
-    pi05_plen = max(pi05_helper.prompt_len_for(sc.instruction) for sc in (all_static_scenes + all_dyn_scenes))
+    # Compute uniform prompt_len across all scenes and background stream instructions so all shards compile identical shapes
+    all_instrs = [sc.instruction for sc in (all_static_scenes + all_dyn_scenes)] + list(_BG_INSTRUCTIONS)
+    pi05_plen = max(pi05_helper.prompt_len_for(ins) for ins in all_instrs)
+
+    if args.latin_probe and all_dyn_scenes:
+        if len(speeds) % len(levels) != 0:
+            raise ValueError(f"--latin-probe requires --speeds count divisible by {len(levels)}, got {len(speeds)}")
+        suite_idx_map = {s: idx for idx, s in enumerate(CANONICAL_SUITES)}
+        fam_idx_map = {f: idx for idx, f in enumerate(levels)}
+        spd_idx_map = {lbl: idx for idx, (lbl, _) in enumerate(speeds)}
+        all_dyn_scenes = [
+            sc
+            for sc in all_dyn_scenes
+            if (
+                suite_idx_map[str(sc.metadata["suite"])] * 10
+                + int(sc.metadata["task_id"])
+                + fam_idx_map[str(sc.metadata["level"])]
+                + spd_idx_map[str(sc.metadata["speed_label"])]
+            )
+            % len(levels)
+            == 0
+        ]
 
     static_scenes = all_static_scenes[args.shard_index :: args.num_shards]
     dyn_scenes = all_dyn_scenes[args.shard_index :: args.num_shards]
@@ -1718,39 +1999,61 @@ def main() -> None:
     )
 
     static_groups = _group_static_scenes(static_scenes)
-    dyn_groups = _group_dynamic_scenes(dyn_scenes, dyn_max_steps)
+    dyn_groups = _group_dynamic_scenes(dyn_scenes, dyn_max_steps, speeds)
     keep_raw = args.num_shards > 1
 
     embodiment = LiberoRealtimeEmbodiment(items_by_id, dyn_args_by_speed)
     all_runs: List[Dict[str, Any]] = []
     try:
         for n_streams in stream_counts:
-            factories: List[Tuple[str, Callable[[], PolicyBase]]] = [
-                (
-                    f"SyncChunk (K=10, N={n_streams})",
-                    lambda n=n_streams: SyncChunkPolicy(
-                        pi05_helper, prompt_len=pi05_plen, chunk_horizon=10, num_streams=n, compile_fast=False
+            sync_k = int(args.sync_horizon)
+            slow_ev = int(args.slow_every_steps)
+            fast_ev = int(args.fast_every_steps)
+            policy_catalog: Dict[str, Tuple[str, Callable[[], PolicyBase]]] = {
+                "sync": (
+                    f"SyncChunk (K={sync_k}, N={n_streams})",
+                    lambda n=n_streams, k=sync_k: SyncChunkPolicy(
+                        pi05_helper, prompt_len=pi05_plen, chunk_horizon=k, num_streams=n, compile_fast=False
                     ),
                 ),
-                (
-                    f"CompiledSync (K=4, N={n_streams})",
-                    lambda n=n_streams: SyncChunkPolicy(
-                        pi05_helper, prompt_len=pi05_plen, chunk_horizon=4, num_streams=n, compile_fast=True
+                "compiled_sync": (
+                    f"CompiledSync (K={fast_ev}, N={n_streams})",
+                    lambda n=n_streams, k=fast_ev: SyncChunkPolicy(
+                        pi05_helper, prompt_len=pi05_plen, chunk_horizon=k, num_streams=n, compile_fast=True
                     ),
                 ),
-                (
-                    f"PyTorchAsync (SDPA, N={n_streams})",
-                    lambda n=n_streams: PyTorchAsyncPolicy(
-                        pi05_helper, prompt_len=pi05_plen, num_streams=n, slow_every_steps=2, fast_every_steps=4
+                "pytorch_async": (
+                    f"PyTorchAsync (SDPA, K={fast_ev}, N={n_streams})",
+                    lambda n=n_streams, se=slow_ev, fe=fast_ev: PyTorchAsyncPolicy(
+                        pi05_helper, prompt_len=pi05_plen, num_streams=n, slow_every_steps=se, fast_every_steps=fe
                     ),
                 ),
-                (
-                    f"Tempo (Engine, N={n_streams})",
-                    lambda n=n_streams: TempoPolicy(
-                        pi05_helper, prompt_len=pi05_plen, num_streams=n, slow_every_steps=2, fast_every_steps=4
+                "tempo": (
+                    f"Tempo (Engine, K={fast_ev}, N={n_streams})",
+                    lambda n=n_streams, se=slow_ev, fe=fast_ev: TempoPolicy(
+                        pi05_helper,
+                        prompt_len=pi05_plen,
+                        num_streams=n,
+                        slow_every_steps=se,
+                        fast_every_steps=fe,
                     ),
                 ),
-            ]
+            }
+            factories = [policy_catalog[p] for p in selected_policies]
+            suite_catalog = {
+                "static": (
+                    "LIBERO-Static",
+                    static_groups,
+                    f"LIBERO-Static ({len(static_tasks)} tasks across spatial, object, goal, 10 @ 20 Hz real-time)",
+                ),
+                "dynamic": (
+                    "LIBERO-Dynamic",
+                    dyn_groups,
+                    _format_dynamic_bench_desc(len(dyn_tasks), len(levels), [s_val for _, s_val in speeds]),
+                ),
+            }
+            suite_plan = [(suite_catalog[s][0], suite_catalog[s][1]) for s in selected_suites]
+            bench_descs = [suite_catalog[s][2] for s in selected_suites]
 
             def _flush_out_json() -> None:
                 attach_paired_speedups(all_runs)
@@ -1762,23 +2065,13 @@ def main() -> None:
                             "harness": "robocurve/inspect-robots",
                             "shard_index": args.shard_index,
                             "num_shards": args.num_shards,
-                            "benchmarks": [
-                                "LIBERO-Static (40 tasks across spatial, object, goal, 10 @ 20 Hz real-time)",
-                                "LIBERO-Dynamic (40 tasks x 3 motion families x 0.03 / 0.06 / 0.09 m/s @ 20 Hz real-time)",
-                            ],
+                            "benchmarks": bench_descs,
                             "runs": all_runs,
                         },
                         indent=2,
                     ),
                     encoding="utf-8",
                 )
-
-            suite_plan = [
-                ("LIBERO-Static", static_groups),
-                ("LIBERO-Dynamic", dyn_groups),
-            ]
-            if args.reverse_suite_order:
-                suite_plan.reverse()
 
             for suite_tag, suite_groups in suite_plan:
                 if not suite_groups:
@@ -1795,6 +2088,7 @@ def main() -> None:
                         args.log_dir,
                         live_jsonl=args.live_jsonl,
                         keep_raw_samples=keep_raw,
+                        model_label=model_label,
                     )
                     all_runs.append(res)
                     _flush_out_json()

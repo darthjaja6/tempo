@@ -34,7 +34,10 @@ class RTCHorizonRing {
       int32_t prefix_steps,
       int32_t action_dim,
       int64_t step_dt_ns,
-      int32_t device_id = 0);
+      int32_t device_id = 0,
+      bool rtc_inpaint = true,
+      bool interpolate = true,
+      bool anchor_to_slow_obs = false);
 
   ~RTCHorizonRing();
 
@@ -48,6 +51,7 @@ class RTCHorizonRing {
   void extract_frozen_prefix(
       const int32_t* d_stream_ids,
       const int64_t* d_t_obs_ns,
+      const int64_t* d_slow_t_obs_ns,
       int32_t batch_size,
       torch::Tensor& out_prefix_bf16,
       torch::Tensor& out_prefix_valid_bool,
@@ -86,6 +90,9 @@ class RTCHorizonRing {
   int32_t action_dim_;
   int64_t step_dt_ns_;
   int32_t device_id_;
+  bool rtc_inpaint_;
+  bool interpolate_;
+  bool anchor_to_slow_obs_;
   bool has_init_pose_{false};
 
   mutable std::mutex mu_;

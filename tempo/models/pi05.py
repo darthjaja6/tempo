@@ -27,6 +27,15 @@ from .layers import (
 
 # Public ungated HF mirror hosting the exact 257,152-vocab PaliGemma SentencePiece tokenizer.json
 _PALIGEMMA_TOKENIZER_REPO = "mlx-community/paligemma-3b-mix-224-8bit"
+_PALIGEMMA_BOS_ID = 2
+
+
+def encode_pi05_prompt_ids(tok: Any, text: str) -> List[int]:
+    """Tokenizes formatted PaliGemma prompt text while guaranteeing a leading ``<bos>`` (id=2)."""
+    ids = [int(v) for v in tok.encode(text).ids]
+    if not ids or ids[0] != _PALIGEMMA_BOS_ID:
+        return [_PALIGEMMA_BOS_ID, *ids]
+    return ids
 
 
 def discretize_pi05_state(state: Union[Sequence[float], torch.Tensor], max_state_dim: int = 32) -> str:
@@ -73,10 +82,15 @@ class Pi05Config:
     max_period: float = 4.0
     prompt_len: int = 96
     fast_precision: str = "bf16"
+    rtc_conditioning_supported: bool = False
     tokenizer_repo: str = _PALIGEMMA_TOKENIZER_REPO
 
     def __post_init__(self) -> None:
         validate_fast_precision(self.fast_precision)
+        if self.prompt_len < 1:
+            raise ValueError(f"Pi05Config.prompt_len must be >= 1, got {self.prompt_len}")
+        if self.prompt_len % 8 != 0:
+            self.prompt_len = ((self.prompt_len + 7) // 8) * 8
 
     @property
     def patches_per_camera(self) -> int:
@@ -115,7 +129,10 @@ class Pi05Config:
             "num_inference_steps": int(d.get("num_inference_steps", 10)),
             "min_period": float(d.get("min_period", 0.004)),
             "max_period": float(d.get("max_period", 4.0)),
+            "rtc_conditioning_supported": bool(d.get("rtc_conditioning_supported", False)),
         }
+        if "tokenizer_max_length" in d:
+            kwargs["prompt_len"] = int(d["tokenizer_max_length"])
         kwargs.update(overrides)
         return cls(**kwargs)
 
@@ -135,7 +152,10 @@ class _GemmaSlowAttn(nn.Module):
         self.requires_grad_(False)
 
     def forward(
-        self, x: torch.Tensor, pos_ids: torch.Tensor
+        self,
+        x: torch.Tensor,
+        pos_ids: torch.Tensor,
+        seq_lens: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         B, S, _ = x.shape
         h = self.norm(x)
@@ -147,7 +167,12 @@ class _GemmaSlowAttn(nn.Module):
         groups = self.num_heads // self.num_kv_heads
         k_exp = k.transpose(1, 2).repeat_interleave(groups, dim=1)
         v_exp = v.transpose(1, 2).repeat_interleave(groups, dim=1)
-        attn = F.scaled_dot_product_attention(q.transpose(1, 2), k_exp, v_exp).transpose(1, 2)
+        attn_mask = (
+            pos_ids.view(1, 1, 1, S) < seq_lens.view(B, 1, 1, 1)
+            if seq_lens is not None
+            else None
+        )
+        attn = F.scaled_dot_product_attention(q.transpose(1, 2), k_exp, v_exp, attn_mask=attn_mask).transpose(1, 2)
         out = x + self.o_proj(attn.reshape(B, S, self.num_heads * self.head_dim))
         return out, k, v
 
@@ -193,8 +218,13 @@ class Pi05GemmaLayer(nn.Module):
             loader.load_linear(self.mlp_up.up_proj, f"{prefix}.mlp.up_proj", device=device)
             loader.load_linear(self.down_proj, f"{prefix}.mlp.down_proj", device=device)
 
-    def forward(self, x: torch.Tensor, pos_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        x, k, v = self.attn(x, pos_ids)
+    def forward(
+        self,
+        x: torch.Tensor,
+        pos_ids: torch.Tensor,
+        seq_lens: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        x, k, v = self.attn(x, pos_ids, seq_lens)
         x = x + self.down_proj(self.mlp_up(x))
         return x, k, v
 
@@ -244,11 +274,7 @@ class Pi05SlowStage(SlowBackbone):
             self.mm_projector = mark_sliceable(
                 nn.Linear(cfg.vision_width, cfg.vlm_width, bias=True, device=dev, dtype=torch.bfloat16)
             )
-            # Pre-embedded scaled language prompt buffer [1, prompt_len, vlm_width]
-            self.register_buffer(
-                "lang_embeds",
-                torch.zeros((1, cfg.prompt_len, cfg.vlm_width), dtype=torch.bfloat16, device=dev),
-            )
+            self._init_prompt_ring(cfg.prompt_len, cfg.vlm_width, cfg.prefix_seq_len, dev)
         else:
             self.vision_tower = None
             self.mm_projector = None
@@ -308,10 +334,13 @@ class Pi05SlowStage(SlowBackbone):
         prompt: Union[str, Sequence[int], torch.Tensor],
         *,
         state: Optional[Union[Sequence[float], torch.Tensor]] = None,
-        **_kwargs: Any,
+        stream_id: Optional[int] = None,
+        busy_rows: Tuple[int, int] = (-1, -1),
     ) -> None:
         if not self.is_first_stage:
             return
+        vis_tokens = self.cfg.num_cameras * self.cfg.patches_per_camera
+
         if isinstance(prompt, torch.Tensor) and prompt.is_floating_point():
             emb_in = prompt.squeeze(0) if prompt.ndim == 3 and prompt.size(0) == 1 else prompt
             if emb_in.ndim != 2 or emb_in.size(1) != self.cfg.vlm_width:
@@ -319,12 +348,13 @@ class Pi05SlowStage(SlowBackbone):
                     f"Floating-point prompt embedding must have shape [L, {self.cfg.vlm_width}], "
                     f"got {tuple(prompt.shape)}"
                 )
-            emb = emb_in.to(device=self.lang_embeds.device, dtype=torch.bfloat16)
+            valid_tok_len = min(int(emb_in.size(0)), self.cfg.prompt_len)
+            emb = emb_in.to(dtype=torch.bfloat16)
             if emb.size(0) >= self.cfg.prompt_len:
                 emb = emb[: self.cfg.prompt_len]
             else:
                 emb = F.pad(emb, (0, 0, 0, self.cfg.prompt_len - emb.size(0)), value=0.0)
-            self.lang_embeds.copy_(emb.unsqueeze(0))
+            self._write_prompt_slot(emb, vis_tokens + valid_tok_len, stream_id, busy_rows)
             return
 
         if self._embed_weight_cpu is None:
@@ -340,38 +370,59 @@ class Pi05SlowStage(SlowBackbone):
                 state_str = discretize_pi05_state(state, self.cfg.max_state_dim)
                 text = f"Task: {cleaned}, State: {state_str};\nAction: "
             else:
-                text = prompt if prompt.endswith("\n") else f"{prompt}\n"
-            ids = tok.encode(text).ids
+                text = f"{cleaned}\n"
+            ids = encode_pi05_prompt_ids(tok, text)
         elif isinstance(prompt, torch.Tensor):
             ids = [int(v) for v in prompt.flatten().tolist()]
         else:
             ids = [int(v) for v in prompt]
 
-        newline_id = 108  # PaliGemma '\n' token
+        valid_tok_len = min(len(ids), self.cfg.prompt_len)
+        pad_id = 0  # PaliGemma '<pad>' token (masked out in Slow self-attn and Fast KV cross-attn)
         if len(ids) >= self.cfg.prompt_len:
             ids = ids[: self.cfg.prompt_len]
         else:
-            ids = ids + [newline_id] * (self.cfg.prompt_len - len(ids))
+            ids = ids + [pad_id] * (self.cfg.prompt_len - len(ids))
 
         idx_t = torch.tensor(ids, dtype=torch.long)
-        emb = F.embedding(idx_t, self._embed_weight_cpu).to(
-            device=self.lang_embeds.device, dtype=torch.bfloat16
-        )
-        emb = emb * math.sqrt(self.cfg.vlm_width)
-        self.lang_embeds.copy_(emb.unsqueeze(0))
+        emb_cpu = F.embedding(idx_t, self._embed_weight_cpu) * math.sqrt(self.cfg.vlm_width)
+        self._write_prompt_slot(emb_cpu, vis_tokens + valid_tok_len, stream_id, busy_rows)
 
-    def encode_prefix_embeds(self, obs: torch.Tensor) -> torch.Tensor:
+    def encode_prefix_embeds(
+        self,
+        obs: torch.Tensor,
+        prompt_slot_ids: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         assert self.is_first_stage and self.vision_tower is not None and self.mm_projector is not None
         B = obs.size(0)
+        if prompt_slot_ids is None:
+            prompt_slot_ids = self._resolve_prompt_slot_ids(B, obs.device)
+        lang = self.lang_embeds.index_select(0, prompt_slot_ids.to(torch.int64))
         vis = self.vision_tower(obs)  # [B, Cams, P, 1152]
         img_embs = self.mm_projector(vis.reshape(B, -1, self.cfg.vision_width))
-        lang = self.lang_embeds.expand(B, -1, -1)
         return torch.cat([img_embs, lang], dim=1)
 
     def forward(self, obs_or_hidden: torch.Tensor, ctx: SlowCaptureContext) -> torch.Tensor:
-        x = self.encode_prefix_embeds(obs_or_hidden) if self.is_first_stage else obs_or_hidden
+        B = obs_or_hidden.size(0)
+        probe_mode = bool(ctx._probe_mode)
+        slot_ids = (
+            self._resolve_prompt_slot_ids(B, obs_or_hidden.device, ctx)
+            if self.is_first_stage
+            else None
+        )
+        seq_lens = ctx.seq_lens
+        if seq_lens is None and not probe_mode and self.is_first_stage:
+            assert slot_ids is not None
+            seq_lens = self.stream_seq_lens_gpu.index_select(0, slot_ids)
+            ctx.seq_lens = seq_lens
+
+        x = (
+            self.encode_prefix_embeds(obs_or_hidden, prompt_slot_ids=slot_ids)
+            if self.is_first_stage
+            else obs_or_hidden
+        )
         for local_i, layer in enumerate(self.layers):
-            x, k, v = layer(x, self.pos_ids)
+            x, k, v = layer(x, self.pos_ids, seq_lens)
             ctx.write_layer_kv(self.layer_start + local_i, k, v)
         if self.is_last_stage and self.final_norm is not None:
             x = self.final_norm(x)
@@ -404,9 +455,9 @@ class Pi05SlowStage(SlowBackbone):
                 if p == 0:
                     assert stg.vision_tower is not None and self.vision_tower is not None
                     assert stg.mm_projector is not None and self.mm_projector is not None
+                    stg._copy_prompt_ring_from(self, dev)
                     stg.vision_tower.load_state_dict(self.vision_tower.state_dict())
                     stg.mm_projector.load_state_dict(self.mm_projector.state_dict())
-                    stg.lang_embeds.copy_(self.lang_embeds.to(dev))
                     stg._embed_weight_cpu = self._embed_weight_cpu
                     stg._checkpoint_dir = self._checkpoint_dir
                     stg._tokenizer = self._tokenizer
@@ -512,6 +563,7 @@ class Pi05FastHead(FastHead):
         self.obs_shape = (cfg.chunk_size, cfg.max_action_dim)
         self.max_q_len = max(64, cfg.chunk_size)
         self.max_q_heads = cfg.num_heads
+        self.rtc_conditioning_supported = bool(cfg.rtc_conditioning_supported)
 
         validate_fast_precision(cfg.fast_precision)
         use_fp8 = cfg.fast_precision == "fp8"
@@ -581,6 +633,7 @@ class Pi05FastHead(FastHead):
         channel: TemporalChannel,
         device: torch.device,
         sample_kv: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        sample_seq_len: Optional[int] = None,
     ) -> None:
         if self.cfg.fast_precision != "fp8":
             return
@@ -589,6 +642,11 @@ class Pi05FastHead(FastHead):
         _tempo_C = _load_ext()
 
         B = 4
+        eff_seq_len = (
+            min(int(sample_seq_len), channel.max_seq_len)
+            if (sample_kv is not None and sample_seq_len is not None and sample_seq_len > 0)
+            else channel.max_seq_len
+        )
         max_pages = B * math.ceil(channel.max_seq_len / channel.page_size) + 8
         tsc = _tempo_C.TemporalStateCache(
             B, 1, max_pages, channel.layers, channel.page_size,
@@ -614,14 +672,15 @@ class Pi05FastHead(FastHead):
             k_pool=tsc.k_pool, v_pool=tsc.v_pool, page_timestamps=tsc.page_timestamps,
             splitk_partial_out=tsc.splitk_partial_out(0), splitk_partial_lse=tsc.splitk_partial_lse(0),
             page_table=torch.tensor(pt_rows, dtype=torch.int32, device=device),
-            seq_lens=torch.full((B,), channel.max_seq_len, dtype=torch.int32, device=device),
+            seq_lens=torch.full((B,), eff_seq_len, dtype=torch.int32, device=device),
             t_now_ns=torch.full((B,), 100_000_000, dtype=torch.int64, device=device),
             relative_time_rope=channel.relative_time_rope, max_seq_len=channel.max_seq_len, mode="kv",
         )
         dummy_obs = torch.randn(
             (B, self.chunk_size, self.cfg.max_action_dim), dtype=torch.bfloat16, device=device
         )
-        dummy_pref = torch.zeros((B, 10, self.action_dim), dtype=torch.bfloat16, device=device)
+        p_len = min(10, self.chunk_size - 1) if self.rtc_conditioning_supported else 0
+        dummy_pref = torch.zeros((B, p_len, self.action_dim), dtype=torch.bfloat16, device=device)
         calibrate_fp8_submodules(self, lambda: self.forward(dummy_obs, view, dummy_pref))
 
     def _step_velocity(
@@ -704,14 +763,16 @@ def build_pi05(
     if prompt is not None and "prompt_len" not in model_kwargs:
         if isinstance(prompt, str):
             tok = load_hf_tokenizer(tok_repo, checkpoint_dir=checkpoint_dir)
-            text = prompt if prompt.endswith("\n") else f"{prompt}\n"
-            req_len = len(tok.encode(text).ids)
+            cleaned = prompt.strip().replace("_", " ").replace("\n", " ")
+            text = f"{cleaned}\n"
+            req_len = len(encode_pi05_prompt_ids(tok, text))
         elif isinstance(prompt, torch.Tensor) and prompt.is_floating_point():
             req_len = int(prompt.size(-2))
         else:
             seq = prompt.flatten().tolist() if isinstance(prompt, torch.Tensor) else list(prompt)
             req_len = len(seq)
-        model_kwargs["prompt_len"] = max(Pi05Config.prompt_len, req_len)
+        base_plen = int(config.get("tokenizer_max_length", Pi05Config.prompt_len))
+        model_kwargs["prompt_len"] = max(base_plen, req_len)
 
     cfg = Pi05Config.from_dict(config, fast_precision=fast_precision, **model_kwargs)
     P = len(slow_devices[0])
@@ -747,6 +808,7 @@ def build_pi05(
                 slow_replicas.append(stages)
 
             ch_cal = slow_replicas[0][0].channel  # type: ignore[attr-defined]
+            cal_seq_len = slow_replicas[0][0].get_stream_prompt_meta(0)[0]  # type: ignore[attr-defined]
             sample_kv = (
                 capture_slow_calibration_sample(
                     slow_replicas[0], ch_cal, (cfg.num_cameras, 3, cfg.image_size, cfg.image_size)
@@ -759,7 +821,7 @@ def build_pi05(
                 head = Pi05FastHead(cfg, device=f_dev)
                 head.load_weights(loader, f_dev)
                 head.eval()
-                head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv)
+                head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv, sample_seq_len=cal_seq_len)
                 fast_shards.append(head)
 
             m_prefix = "model." if loader.has("model.action_in_proj.weight") else ""
@@ -787,6 +849,7 @@ def build_pi05(
             slow_replicas.append(stages)
 
         ch_cal = slow_replicas[0][0].channel  # type: ignore[attr-defined]
+        cal_seq_len = slow_replicas[0][0].get_stream_prompt_meta(0)[0]  # type: ignore[attr-defined]
         sample_kv = (
             capture_slow_calibration_sample(
                 slow_replicas[0], ch_cal, (cfg.num_cameras, 3, cfg.image_size, cfg.image_size)
@@ -798,7 +861,7 @@ def build_pi05(
             f_dev = torch.device(f"cuda:{int(dev_id)}")
             head = Pi05FastHead(cfg, device=f_dev)
             head.eval()
-            head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv)
+            head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv, sample_seq_len=cal_seq_len)
             fast_shards.append(head)
 
     ch = slow_replicas[0][0].channel  # type: ignore[attr-defined]
@@ -811,6 +874,7 @@ def build_pi05(
         slow_obs_shape=(cfg.num_cameras, 3, cfg.image_size, cfg.image_size),
         fast_obs_shape=(cfg.chunk_size, cfg.max_action_dim),
         fast_obs_is_noise=bool(fast_shards[0].fast_obs_is_noise),
+        rtc_conditioning_supported=bool(fast_shards[0].rtc_conditioning_supported),
         step_dt_ms=fast_shards[0].resolve_step_dt_ms(),
         max_q_len=max(64, cfg.chunk_size),
         max_q_heads=cfg.num_heads,

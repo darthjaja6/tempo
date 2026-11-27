@@ -373,13 +373,16 @@ PYBIND11_MODULE(_tempo_C, m) {
       .def_readonly("hard_underruns", &RTCStats::hard_underruns);
 
   py::class_<RTCHorizonRing, std::shared_ptr<RTCHorizonRing>>(m, "RTCHorizonRing")
-      .def(py::init<int32_t, int32_t, int32_t, int32_t, int64_t, int32_t>(),
+      .def(py::init<int32_t, int32_t, int32_t, int32_t, int64_t, int32_t, bool, bool, bool>(),
            py::arg("num_streams"),
            py::arg("horizon_steps"),
            py::arg("prefix_steps"),
            py::arg("action_dim"),
            py::arg("step_dt_ns"),
-           py::arg("device_id") = 0)
+           py::arg("device_id") = 0,
+           py::arg("rtc_inpaint") = true,
+           py::arg("interpolate") = true,
+           py::arg("anchor_to_slow_obs") = false)
       .def("reset_all", &RTCHorizonRing::reset_all, py::arg("init_pose") = py::none())
       .def("reset_stats", &RTCHorizonRing::reset_stats)
       .def("sample_at", &RTCHorizonRing::sample_at, py::call_guard<py::gil_scoped_release>())
@@ -439,8 +442,18 @@ PYBIND11_MODULE(_tempo_C, m) {
       .def("reset_all_streams", &TimeAwareScheduler::reset_all_streams, py::arg("init_pose") = py::none())
       .def("reset_telemetry", &TimeAwareScheduler::reset_telemetry)
       .def("reset_rtc_stats", &TimeAwareScheduler::reset_rtc_stats)
-      .def("submit_slow_obs", &TimeAwareScheduler::submit_slow_obs, py::call_guard<py::gil_scoped_release>())
+      .def("busy_slow_prompt_rows", &TimeAwareScheduler::busy_slow_prompt_rows)
+      .def(
+           "submit_slow_obs",
+           &TimeAwareScheduler::submit_slow_obs,
+           py::arg("stream_id"),
+           py::arg("t_obs_ns"),
+           py::arg("obs"),
+           py::arg("seq_len"),
+           py::arg("prompt_row"),
+           py::call_guard<py::gil_scoped_release>())
       .def("submit_fast_obs", &TimeAwareScheduler::submit_fast_obs, py::call_guard<py::gil_scoped_release>())
+      .def("submit_fast_obs_batch", &TimeAwareScheduler::submit_fast_obs_batch, py::call_guard<py::gil_scoped_release>())
       .def("submit_remote_hidden", &TimeAwareScheduler::submit_remote_hidden, py::call_guard<py::gil_scoped_release>())
       .def(
            "sample_actions_at",

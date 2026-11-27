@@ -21,16 +21,27 @@ namespace tempo {
 
 namespace {
 
-__device__ __forceinline__ float eval_chunk_interp(
+__device__ __forceinline__ int64_t resolve_origin_ns(
+    int64_t fast_t_obs_ns, int64_t slow_t_obs_ns, bool anchor_to_slow_obs) {
+  return (anchor_to_slow_obs && slow_t_obs_ns > 0) ? slow_t_obs_ns : fast_t_obs_ns;
+}
+
+__device__ __forceinline__ float eval_chunk_action(
     const float* chunk_base,
     int32_t H,
     int32_t A,
     int32_t a,
     int64_t t_ns,
-    int64_t chunk_t_obs_ns,
-    int64_t step_dt_ns) {
-  float f_step = static_cast<float>(t_ns - chunk_t_obs_ns) / static_cast<float>(step_dt_ns);
+    int64_t chunk_origin_ns,
+    int64_t step_dt_ns,
+    bool interpolate) {
+  float f_step = static_cast<float>(t_ns - chunk_origin_ns) / static_cast<float>(step_dt_ns);
   f_step = fmaxf(0.0f, fminf(f_step, static_cast<float>(H - 1)));
+  if (!interpolate) {
+    int32_t idx = static_cast<int32_t>(floorf(f_step + 0.5f));
+    idx = max(0, min(idx, H - 1));
+    return chunk_base[idx * A + a];
+  }
   int32_t idx0 = static_cast<int32_t>(floorf(f_step));
   int32_t idx1 = min(idx0 + 1, H - 1);
   float frac = f_step - static_cast<float>(idx0);
@@ -42,14 +53,19 @@ __device__ __forceinline__ float eval_chunk_interp(
 __global__ void extract_frozen_prefix_kernel(
     const int32_t* __restrict__ stream_ids,
     const int64_t* __restrict__ t_obs_ns,
+    const int64_t* __restrict__ slow_t_obs_ns,
     const float* __restrict__ active_chunks,
     const int64_t* __restrict__ active_t_obs_ns,
+    const int64_t* __restrict__ active_slow_t_obs_ns,
     const int32_t* __restrict__ active_valid,
     const float* __restrict__ staged_chunks,
     const int64_t* __restrict__ staged_t_obs_ns,
     const int64_t* __restrict__ staged_t_splice_ns,
+    const int64_t* __restrict__ staged_slow_t_obs_ns,
     const int32_t* __restrict__ staged_valid,
     bool has_init_pose,
+    bool interpolate,
+    bool anchor_to_slow_obs,
     __nv_bfloat16* __restrict__ out_prefix,
     bool* __restrict__ out_prefix_valid,
     int32_t B,
@@ -79,15 +95,21 @@ __global__ void extract_frozen_prefix_kernel(
   if (p == 0 && a == 0) {
     out_prefix_valid[b] = has_init_pose || (active_valid[s] != 0) || (staged_valid[s] != 0);
   }
-  const int64_t t_step = t_obs_ns[b] + static_cast<int64_t>(p) * step_dt_ns;
+  const int64_t new_origin_ns =
+      resolve_origin_ns(t_obs_ns[b], slow_t_obs_ns[b], anchor_to_slow_obs);
+  const int64_t t_step = new_origin_ns + static_cast<int64_t>(p) * step_dt_ns;
 
   float val;
   if (staged_valid[s] && t_step >= staged_t_splice_ns[s]) {
-    val = eval_chunk_interp(
-        staged_chunks + static_cast<int64_t>(s) * H * A, H, A, a, t_step, staged_t_obs_ns[s], step_dt_ns);
+    const int64_t st_origin_ns =
+        resolve_origin_ns(staged_t_obs_ns[s], staged_slow_t_obs_ns[s], anchor_to_slow_obs);
+    val = eval_chunk_action(
+        staged_chunks + static_cast<int64_t>(s) * H * A, H, A, a, t_step, st_origin_ns, step_dt_ns, interpolate);
   } else if (active_valid[s]) {
-    val = eval_chunk_interp(
-        active_chunks + static_cast<int64_t>(s) * H * A, H, A, a, t_step, active_t_obs_ns[s], step_dt_ns);
+    const int64_t act_origin_ns =
+        resolve_origin_ns(active_t_obs_ns[s], active_slow_t_obs_ns[s], anchor_to_slow_obs);
+    val = eval_chunk_action(
+        active_chunks + static_cast<int64_t>(s) * H * A, H, A, a, t_step, act_origin_ns, step_dt_ns, interpolate);
   } else {
     val = active_chunks[static_cast<int64_t>(s) * H * A + a];
   }
@@ -101,6 +123,9 @@ __global__ void commit_chunks_kernel(
     int64_t t_commit_ns,
     int64_t deadline_ns,
     bool has_init_pose,
+    bool rtc_inpaint,
+    bool interpolate,
+    bool anchor_to_slow_obs,
     const __nv_bfloat16* __restrict__ new_chunks,
     float* __restrict__ active_chunks,
     int64_t* __restrict__ active_t_obs_ns,
@@ -143,23 +168,14 @@ __global__ void commit_chunks_kernel(
   }
 
   const bool was_valid = (active_valid[s] != 0);
-  if (!was_valid && (!has_init_pose || t_commit_ns <= splice_ns)) {
-    for (int32_t idx = threadIdx.x; idx < H * A; idx += blockDim.x) {
-      active_chunks[static_cast<int64_t>(s) * H * A + idx] =
-          __bfloat162float(new_chunks[static_cast<int64_t>(b) * H * A + idx]);
-    }
-    __syncthreads();
-    if (threadIdx.x == 0) {
-      active_t_obs_ns[s] = obs_ns;
-      active_slow_t_obs_ns[s] = slow_t_obs_ns[b];
-      active_valid[s] = 1;
-      staged_valid[s] = 0;
-    }
-    return;
-  }
+  const int64_t prev_origin_ns =
+      resolve_origin_ns(active_t_obs_ns[s], active_slow_t_obs_ns[s], anchor_to_slow_obs);
+  const int64_t active_end_ns = prev_origin_ns + horizon_ns;
+  const int64_t new_origin_ns =
+      resolve_origin_ns(obs_ns, slow_t_obs_ns[b], anchor_to_slow_obs);
+  const int64_t new_end_ns = new_origin_ns + horizon_ns;
 
-  const int64_t active_end_ns = active_t_obs_ns[s] + horizon_ns;
-  if (was_valid && t_commit_ns <= splice_ns && splice_ns <= active_end_ns) {
+  if (rtc_inpaint && was_valid && t_commit_ns <= splice_ns && splice_ns <= active_end_ns) {
     for (int32_t idx = threadIdx.x; idx < H * A; idx += blockDim.x) {
       staged_chunks[static_cast<int64_t>(s) * H * A + idx] =
           __bfloat162float(new_chunks[static_cast<int64_t>(b) * H * A + idx]);
@@ -171,56 +187,77 @@ __global__ void commit_chunks_kernel(
       staged_slow_t_obs_ns[s] = slow_t_obs_ns[b];
       staged_valid[s] = 1;
     }
-  } else {
-    const bool prev_covered = !was_valid || (t_commit_ns <= active_end_ns);
-    if (threadIdx.x == 0) {
-      if (prev_covered) {
-        atomicAdd(&counters[1], 1ULL);
-      } else {
-        atomicAdd(&counters[2], 1ULL);
-      }
-    }
+    return;
+  }
 
-    // Smoothly blend over up to 5 steps starting at t_commit_ns from active/held endpoint into new trajectory,
-    // clamping blend window to H - start_step so the horizon endpoint H - 1 always reaches 100% new trajectory.
-    const int32_t start_step =
-        max(0, min(H - 1, static_cast<int32_t>((t_commit_ns - obs_ns) / step_dt_ns)));
-    const int32_t eff_blend = min(5, H - start_step);
-    float* act_ptr = active_chunks + static_cast<int64_t>(s) * H * A;
-    const __nv_bfloat16* new_ptr = new_chunks + static_cast<int64_t>(b) * H * A;
-    const int64_t old_obs_ns = was_valid ? active_t_obs_ns[s] : obs_ns;
+  const bool cold_pose_overrun = !was_valid && rtc_inpaint && has_init_pose && (t_commit_ns > splice_ns);
+  const bool cold_pose_blend = !was_valid && has_init_pose && (!rtc_inpaint || (t_commit_ns > splice_ns));
+  if (threadIdx.x == 0) {
+    if (was_valid) {
+      if (t_commit_ns > active_end_ns) {
+        atomicAdd(&counters[2], 1ULL);
+      } else if (t_commit_ns > splice_ns) {
+        atomicAdd(&counters[1], 1ULL);
+      }
+    } else if (cold_pose_overrun) {
+      atomicAdd(&counters[1], 1ULL);
+    }
+  }
+
+  float* act_ptr = active_chunks + static_cast<int64_t>(s) * H * A;
+  const __nv_bfloat16* new_ptr = new_chunks + static_cast<int64_t>(b) * H * A;
+  const bool should_blend =
+      (t_commit_ns < new_end_ns) && ((was_valid && t_commit_ns <= active_end_ns) || cold_pose_blend);
+
+  if (!should_blend) {
+    for (int32_t idx = threadIdx.x; idx < H * A; idx += blockDim.x) {
+      act_ptr[idx] = __bfloat162float(new_ptr[idx]);
+    }
+  } else {
+    const int64_t base_span_ns = max(static_cast<int64_t>(10000000), step_dt_ns);
+    const int64_t eff_span_ns = max(static_cast<int64_t>(1), min(base_span_ns, new_end_ns - t_commit_ns));
+    const int64_t old_origin_ns = was_valid ? prev_origin_ns : new_origin_ns;
+    float* stg_ptr = staged_chunks + static_cast<int64_t>(s) * H * A;
 
     for (int32_t idx = threadIdx.x; idx < H * A; idx += blockDim.x) {
       const int32_t h = idx / A;
       const int32_t a = idx % A;
       float target_v = __bfloat162float(new_ptr[idx]);
-      if (!was_valid && h < start_step) {
-        target_v = act_ptr[idx];
-      } else if (eff_blend >= 2 && h >= start_step && h < start_step + eff_blend) {
-        int64_t t_h = obs_ns + static_cast<int64_t>(h) * step_dt_ns;
-        float old_v = eval_chunk_interp(act_ptr, H, A, a, t_h, old_obs_ns, step_dt_ns);
-        float w = static_cast<float>(h - start_step) / static_cast<float>(eff_blend - 1);
+      const int64_t t_h = new_origin_ns + static_cast<int64_t>(h) * step_dt_ns;
+      if (t_h <= t_commit_ns) {
+        target_v =
+            was_valid
+                ? eval_chunk_action(act_ptr, H, A, a, t_h, old_origin_ns, step_dt_ns, interpolate)
+                : act_ptr[a];
+      } else if (t_h < t_commit_ns + eff_span_ns) {
+        float old_v =
+            was_valid
+                ? eval_chunk_action(act_ptr, H, A, a, t_h, old_origin_ns, step_dt_ns, interpolate)
+                : act_ptr[a];
+        float w = static_cast<float>(t_h - t_commit_ns) / static_cast<float>(eff_span_ns);
         float alpha = w * w * (3.0f - 2.0f * w);
         target_v = old_v + alpha * (target_v - old_v);
       }
-      staged_chunks[static_cast<int64_t>(s) * H * A + idx] = target_v;
+      stg_ptr[idx] = target_v;
     }
     __syncthreads();
     for (int32_t idx = threadIdx.x; idx < H * A; idx += blockDim.x) {
-      act_ptr[idx] = staged_chunks[static_cast<int64_t>(s) * H * A + idx];
+      act_ptr[idx] = stg_ptr[idx];
     }
-    __syncthreads();
-    if (threadIdx.x == 0) {
-      active_t_obs_ns[s] = obs_ns;
-      active_slow_t_obs_ns[s] = slow_t_obs_ns[b];
-      active_valid[s] = 1;
-      staged_valid[s] = 0;
-    }
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    active_t_obs_ns[s] = obs_ns;
+    active_slow_t_obs_ns[s] = slow_t_obs_ns[b];
+    active_valid[s] = 1;
+    staged_valid[s] = 0;
   }
 }
 
 __global__ void sample_at_kernel(
     int64_t t_query_ns,
+    bool interpolate,
+    bool anchor_to_slow_obs,
     float* __restrict__ active_chunks,
     int64_t* __restrict__ active_t_obs_ns,
     int64_t* __restrict__ active_slow_t_obs_ns,
@@ -270,11 +307,13 @@ __global__ void sample_at_kernel(
   const int64_t horizon_ns = static_cast<int64_t>(H - 1) * step_dt_ns;
   const int64_t fast_age_ns = t_query_ns - active_t_obs_ns[s];
   const int64_t slow_age_ns = t_query_ns - active_slow_t_obs_ns[s];
+  const int64_t origin_ns =
+      resolve_origin_ns(active_t_obs_ns[s], active_slow_t_obs_ns[s], anchor_to_slow_obs);
 
   if (threadIdx.x == 0) {
     out_fast_aoi_ms[s] = static_cast<float>(fast_age_ns) * 1e-6f;
     out_slow_aoi_ms[s] = (active_slow_t_obs_ns[s] > 0) ? (static_cast<float>(slow_age_ns) * 1e-6f) : -1.0f;
-    if (fast_age_ns > horizon_ns) {
+    if ((t_query_ns - origin_ns) > horizon_ns) {
       atomicAdd(underrun_this_tick, 1ULL);
     }
   }
@@ -282,7 +321,7 @@ __global__ void sample_at_kernel(
   const float* act_ptr = active_chunks + static_cast<int64_t>(s) * H * A;
   for (int32_t a = threadIdx.x; a < A; a += blockDim.x) {
     out_actions[s * A + a] =
-        eval_chunk_interp(act_ptr, H, A, a, t_query_ns, active_t_obs_ns[s], step_dt_ns);
+        eval_chunk_action(act_ptr, H, A, a, t_query_ns, origin_ns, step_dt_ns, interpolate);
   }
 }
 
@@ -294,14 +333,24 @@ RTCHorizonRing::RTCHorizonRing(
     int32_t prefix_steps,
     int32_t action_dim,
     int64_t step_dt_ns,
-    int32_t device_id)
+    int32_t device_id,
+    bool rtc_inpaint,
+    bool interpolate,
+    bool anchor_to_slow_obs)
     : num_streams_(num_streams),
       horizon_steps_(horizon_steps),
       prefix_steps_(prefix_steps),
       action_dim_(action_dim),
       step_dt_ns_(step_dt_ns),
       device_id_(device_id),
+      rtc_inpaint_(rtc_inpaint),
+      interpolate_(interpolate),
+      anchor_to_slow_obs_(anchor_to_slow_obs),
       rtc_stream_(c10::cuda::getStreamFromPool(/*isHighPriority=*/true, device_id)) {
+  if (rtc_inpaint_ && anchor_to_slow_obs_) {
+    throw std::invalid_argument(
+        "RTCHorizonRing: rtc_inpaint=true cannot be combined with anchor_to_slow_obs=true");
+  }
   c10::cuda::CUDAGuard guard(device_id_);
   TS_RTC_CUDA_CHECK(cudaEventCreateWithFlags(&exec_done_ev_, cudaEventDisableTiming));
   TS_RTC_CUDA_CHECK(cudaEventCreateWithFlags(&sample_done_ev_, cudaEventDisableTiming));
@@ -371,6 +420,7 @@ void RTCHorizonRing::reset_stats() {
 void RTCHorizonRing::extract_frozen_prefix(
     const int32_t* d_stream_ids,
     const int64_t* d_t_obs_ns,
+    const int64_t* d_slow_t_obs_ns,
     int32_t batch_size,
     torch::Tensor& out_prefix_bf16,
     torch::Tensor& out_prefix_valid_bool,
@@ -378,21 +428,37 @@ void RTCHorizonRing::extract_frozen_prefix(
   std::lock_guard<std::mutex> lk(mu_);
   c10::cuda::CUDAGuard dev_guard(device_id_);
   TS_RTC_CUDA_CHECK(cudaStreamWaitEvent(stream, sample_done_ev_, 0));
-  const int32_t max_B = static_cast<int32_t>(out_prefix_bf16.size(0));
+  const int32_t max_B = static_cast<int32_t>(out_prefix_valid_bool.size(0));
+  if (!rtc_inpaint_ || prefix_steps_ <= 0) {
+    if (out_prefix_valid_bool.numel() > 0) {
+      TS_RTC_CUDA_CHECK(
+          cudaMemsetAsync(out_prefix_valid_bool.data_ptr<bool>(), 0, out_prefix_valid_bool.nbytes(), stream));
+    }
+    if (out_prefix_bf16.numel() > 0) {
+      TS_RTC_CUDA_CHECK(cudaMemsetAsync(out_prefix_bf16.data_ptr(), 0, out_prefix_bf16.nbytes(), stream));
+    }
+    TS_RTC_CUDA_CHECK(cudaEventRecord(exec_done_ev_, stream));
+    return;
+  }
   const int32_t total = max_B * prefix_steps_ * action_dim_;
   const int32_t threads = 128;
   const int32_t blocks = (total + threads - 1) / threads;
   extract_frozen_prefix_kernel<<<blocks, threads, 0, stream>>>(
       d_stream_ids,
       d_t_obs_ns,
+      d_slow_t_obs_ns,
       active_chunks_.data_ptr<float>(),
       active_t_obs_ns_.data_ptr<int64_t>(),
+      active_slow_t_obs_ns_.data_ptr<int64_t>(),
       active_valid_.data_ptr<int32_t>(),
       staged_chunks_.data_ptr<float>(),
       staged_t_obs_ns_.data_ptr<int64_t>(),
       staged_t_splice_ns_.data_ptr<int64_t>(),
+      staged_slow_t_obs_ns_.data_ptr<int64_t>(),
       staged_valid_.data_ptr<int32_t>(),
       has_init_pose_,
+      interpolate_,
+      anchor_to_slow_obs_,
       reinterpret_cast<__nv_bfloat16*>(out_prefix_bf16.data_ptr<at::BFloat16>()),
       out_prefix_valid_bool.data_ptr<bool>(),
       batch_size,
@@ -424,6 +490,9 @@ void RTCHorizonRing::commit_chunks(
       t_commit_ns,
       deadline_ns,
       has_init_pose_,
+      rtc_inpaint_,
+      interpolate_,
+      anchor_to_slow_obs_,
       reinterpret_cast<const __nv_bfloat16*>(new_chunks_bf16.data_ptr<at::BFloat16>()),
       active_chunks_.data_ptr<float>(),
       active_t_obs_ns_.data_ptr<int64_t>(),
@@ -461,6 +530,8 @@ PendingRTCSample RTCHorizonRing::launch_sample_async(int64_t t_query_ns) {
 
   sample_at_kernel<<<num_streams_, 64, 0, st>>>(
       t_query_ns,
+      interpolate_,
+      anchor_to_slow_obs_,
       active_chunks_.data_ptr<float>(),
       active_t_obs_ns_.data_ptr<int64_t>(),
       active_slow_t_obs_ns_.data_ptr<int64_t>(),

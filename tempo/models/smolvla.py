@@ -61,6 +61,7 @@ class SmolVLAConfig:
     max_period: float = 4.0
     prompt_len: int = 32
     fast_precision: str = "bf16"
+    rtc_conditioning_supported: bool = False
     tokenizer_repo: str = _SMOLVLM_TOKENIZER_REPO
 
     def __post_init__(self) -> None:
@@ -106,6 +107,7 @@ class SmolVLAConfig:
             "state_dim": state_dim,
             "max_state_dim": max_st,
             "num_inference_steps": int(d.get("num_steps", 10)),
+            "rtc_conditioning_supported": bool(d.get("rtc_conditioning_supported", False)),
         }
         kwargs.update(overrides)
         return cls(**kwargs)
@@ -178,7 +180,7 @@ class SmolVLMSlowLayer(nn.Module):
         self,
         x: torch.Tensor,
         pos_ids: torch.Tensor,
-        attn_bias: torch.Tensor,
+        seq_lens: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         B, S, _ = x.shape
         h = self.input_layernorm(x)
@@ -191,7 +193,15 @@ class SmolVLMSlowLayer(nn.Module):
         groups = self.num_heads // self.num_kv_heads
         k_exp = k.transpose(1, 2).repeat_interleave(groups, dim=1)
         v_exp = v.transpose(1, 2).repeat_interleave(groups, dim=1)
-        attn = F.scaled_dot_product_attention(q.transpose(1, 2), k_exp, v_exp, attn_mask=attn_bias).transpose(
+        q_pos = pos_ids.view(1, 1, S, 1)
+        k_pos = pos_ids.view(1, 1, 1, S)
+        sl = (
+            seq_lens.to(torch.int64).clamp(2, S).view(B, 1, 1, 1)
+            if seq_lens is not None
+            else torch.full((B, 1, 1, 1), S, dtype=torch.int64, device=x.device)
+        )
+        attn_mask = k_pos < torch.where(q_pos < sl - 1, sl - 1, sl)
+        attn = F.scaled_dot_product_attention(q.transpose(1, 2), k_exp, v_exp, attn_mask=attn_mask).transpose(
             1, 2
         )
         x = x + self.o_proj(attn.reshape(B, S, self.num_heads * self.head_dim))
@@ -264,10 +274,7 @@ class SmolVLASlowStage(SlowBackbone):
             self.register_buffer(
                 "img_end_emb", torch.zeros((1, 1, cfg.vlm_width), dtype=torch.bfloat16, device=dev)
             )
-            self.register_buffer(
-                "lang_embeds",
-                torch.zeros((1, cfg.prompt_len, cfg.vlm_width), dtype=torch.bfloat16, device=dev),
-            )
+            self._init_prompt_ring(cfg.prompt_len, cfg.vlm_width, cfg.prefix_seq_len, dev)
             self.register_buffer(
                 "robot_state", torch.zeros((1, cfg.max_state_dim), dtype=torch.bfloat16, device=dev)
             )
@@ -277,11 +284,6 @@ class SmolVLASlowStage(SlowBackbone):
             self.state_proj = None
 
         S = cfg.prefix_seq_len
-        # Prefix attention mask: image+lang tokens [0..S-2] do not attend to final state token [S-1],
-        # while final state token [S-1] attends to all [0..S-1].
-        bias = torch.zeros((1, 1, S, S), dtype=torch.bfloat16, device=dev)
-        bias[:, :, : S - 1, S - 1] = -1e4
-        self.register_buffer("prefix_attn_bias", bias)
         self.register_buffer("pos_ids", torch.arange(S, dtype=torch.int64, device=dev))
 
         self.layers = nn.ModuleList(
@@ -364,7 +366,13 @@ class SmolVLASlowStage(SlowBackbone):
         self.robot_state.copy_(st_dev.unsqueeze(0))
 
     @torch.no_grad()
-    def set_prompt(self, prompt: Union[str, Sequence[int], torch.Tensor], **_kwargs: Any) -> None:
+    def set_prompt(
+        self,
+        prompt: Union[str, Sequence[int], torch.Tensor],
+        *,
+        stream_id: Optional[int] = None,
+        busy_rows: Tuple[int, int] = (-1, -1),
+    ) -> None:
         if not self.is_first_stage:
             return
         if isinstance(prompt, torch.Tensor) and prompt.is_floating_point():
@@ -374,12 +382,14 @@ class SmolVLASlowStage(SlowBackbone):
                     f"Floating-point prompt embedding must have shape [L, {self.cfg.vlm_width}], "
                     f"got {tuple(prompt.shape)}"
                 )
-            emb = emb_in.to(device=self.lang_embeds.device, dtype=torch.bfloat16)
+            emb = emb_in.to(dtype=torch.bfloat16)
+            valid_prompt_len = min(int(emb.size(0)), self.cfg.prompt_len)
             if emb.size(0) >= self.cfg.prompt_len:
                 emb = emb[: self.cfg.prompt_len]
             else:
                 emb = F.pad(emb, (0, 0, 0, self.cfg.prompt_len - emb.size(0)), value=0.0)
-            self.lang_embeds.copy_(emb.unsqueeze(0))
+            valid_seq_len = self.cfg.num_cameras * (self.cfg.tokens_per_camera + 3) + valid_prompt_len + 1
+            self._write_prompt_slot(emb, valid_seq_len, stream_id, busy_rows)
             return
 
         if self._embed_weight_cpu is None:
@@ -396,6 +406,7 @@ class SmolVLASlowStage(SlowBackbone):
         else:
             ids = [int(v) for v in prompt]
 
+        valid_prompt_len = min(len(ids), self.cfg.prompt_len)
         pad_id = 2
         if len(ids) >= self.cfg.prompt_len:
             ids = ids[: self.cfg.prompt_len]
@@ -403,11 +414,9 @@ class SmolVLASlowStage(SlowBackbone):
             ids = ids + [pad_id] * (self.cfg.prompt_len - len(ids))
 
         idx_t = torch.tensor(ids, dtype=torch.long)
-        emb = F.embedding(idx_t, self._embed_weight_cpu).to(
-            device=self.lang_embeds.device, dtype=torch.bfloat16
-        )
-        emb = emb * math.sqrt(self.cfg.vlm_width)
-        self.lang_embeds.copy_(emb.unsqueeze(0))
+        emb_cpu = F.embedding(idx_t, self._embed_weight_cpu) * math.sqrt(self.cfg.vlm_width)
+        valid_seq_len = self.cfg.num_cameras * (self.cfg.tokens_per_camera + 3) + valid_prompt_len + 1
+        self._write_prompt_slot(emb_cpu, valid_seq_len, stream_id, busy_rows)
 
     def _pixel_shuffle_and_project(self, vis: torch.Tensor) -> torch.Tensor:
         # vis: [B, Cams, 1024, 768] -> [B, Cams, 64, 960]
@@ -419,9 +428,19 @@ class SmolVLASlowStage(SlowBackbone):
         x = x.view(B, Cams, (g // sf) ** 2, D * sf * sf)
         return self.connector_proj(x) * math.sqrt(self.cfg.vlm_width)
 
-    def encode_prefix(self, obs: torch.Tensor) -> torch.Tensor:
+    def encode_prefix(
+        self,
+        obs: torch.Tensor,
+        prompt_slot_ids: Optional[torch.Tensor] = None,
+        seq_lens: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         assert self.is_first_stage and self.vision_tower is not None and self.state_proj is not None
         B = obs.size(0)
+        if prompt_slot_ids is None:
+            prompt_slot_ids = self._resolve_prompt_slot_ids(B, obs.device)
+        if seq_lens is None:
+            seq_lens = self.stream_seq_lens_gpu.index_select(0, prompt_slot_ids.to(torch.int64))
+        lang = self.lang_embeds.index_select(0, prompt_slot_ids.to(torch.int64))
         vis = self._pixel_shuffle_and_project(self.vision_tower(obs))
         cam_chunks = []
         s_tok = self.img_start_emb.expand(B, -1, -1)
@@ -429,12 +448,30 @@ class SmolVLASlowStage(SlowBackbone):
         for c in range(self.cfg.num_cameras):
             cam_chunks.extend([s_tok, vis[:, c], e_tok])
         st_tok = self.state_proj(self.robot_state.expand(B, -1)).unsqueeze(1)
-        return torch.cat([*cam_chunks, self.lang_embeds.expand(B, -1, -1), st_tok], dim=1)
+        x = torch.cat([*cam_chunks, lang, st_tok], dim=1)
+        S = x.size(1)
+        st_idx = (seq_lens.to(torch.int64) - 1).clamp(0, S - 1).view(B, 1, 1).expand_as(st_tok)
+        return x.scatter(1, st_idx, st_tok)
 
     def forward(self, obs_or_hidden: torch.Tensor, ctx: SlowCaptureContext) -> torch.Tensor:
-        x = self.encode_prefix(obs_or_hidden) if self.is_first_stage else obs_or_hidden
+        B = obs_or_hidden.size(0)
+        probe_mode = bool(ctx._probe_mode)
+        slot_ids = (
+            self._resolve_prompt_slot_ids(B, obs_or_hidden.device, ctx)
+            if self.is_first_stage
+            else None
+        )
+        seq_lens = ctx.seq_lens
+        if seq_lens is None and not probe_mode and self.is_first_stage:
+            assert slot_ids is not None
+            seq_lens = self.stream_seq_lens_gpu.index_select(0, slot_ids)
+            ctx.seq_lens = seq_lens
+        if self.is_first_stage:
+            x = self.encode_prefix(obs_or_hidden, prompt_slot_ids=slot_ids, seq_lens=seq_lens)
+        else:
+            x = obs_or_hidden
         for local_i, layer in enumerate(self.layers):
-            x, k_tsc, v_tsc = layer(x, self.pos_ids, self.prefix_attn_bias)
+            x, k_tsc, v_tsc = layer(x, self.pos_ids, seq_lens)
             ctx.write_layer_kv(self.layer_start + local_i, k_tsc, v_tsc)
         if self.is_last_stage and self.final_norm is not None:
             x = self.final_norm(x)
@@ -469,12 +506,12 @@ class SmolVLASlowStage(SlowBackbone):
                     assert stg.vision_tower is not None and self.vision_tower is not None
                     assert stg.connector_proj is not None and self.connector_proj is not None
                     assert stg.state_proj is not None and self.state_proj is not None
+                    stg._copy_prompt_ring_from(self, dev)
                     stg.vision_tower.load_state_dict(self.vision_tower.state_dict())
                     stg.connector_proj.load_state_dict(self.connector_proj.state_dict())
                     stg.state_proj.load_state_dict(self.state_proj.state_dict())
                     stg.img_start_emb.copy_(self.img_start_emb.to(dev))
                     stg.img_end_emb.copy_(self.img_end_emb.to(dev))
-                    stg.lang_embeds.copy_(self.lang_embeds.to(dev))
                     stg.robot_state.copy_(self.robot_state.to(dev))
                     stg._embed_weight_cpu = self._embed_weight_cpu
                     stg._checkpoint_dir = self._checkpoint_dir
@@ -601,6 +638,7 @@ class SmolVLAFastHead(FastHead):
         self.obs_shape = (cfg.chunk_size, cfg.max_action_dim)
         self.max_q_len = max(64, cfg.chunk_size)
         self.max_q_heads = cfg.num_heads
+        self.rtc_conditioning_supported = bool(cfg.rtc_conditioning_supported)
 
         validate_fast_precision(cfg.fast_precision)
         use_fp8 = cfg.fast_precision == "fp8"
@@ -670,6 +708,7 @@ class SmolVLAFastHead(FastHead):
         channel: TemporalChannel,
         device: torch.device,
         sample_kv: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        sample_seq_len: Optional[int] = None,
     ) -> None:
         if self.cfg.fast_precision != "fp8":
             return
@@ -678,6 +717,11 @@ class SmolVLAFastHead(FastHead):
         _tempo_C = _load_ext()
 
         B = 4
+        eff_seq = (
+            max(1, min(int(sample_seq_len), channel.max_seq_len))
+            if sample_seq_len is not None
+            else channel.max_seq_len
+        )
         max_pages = B * math.ceil(channel.max_seq_len / channel.page_size) + 8
         tsc = _tempo_C.TemporalStateCache(
             B, 1, max_pages, channel.layers, channel.page_size,
@@ -703,14 +747,15 @@ class SmolVLAFastHead(FastHead):
             k_pool=tsc.k_pool, v_pool=tsc.v_pool, page_timestamps=tsc.page_timestamps,
             splitk_partial_out=tsc.splitk_partial_out(0), splitk_partial_lse=tsc.splitk_partial_lse(0),
             page_table=torch.tensor(pt_rows, dtype=torch.int32, device=device),
-            seq_lens=torch.full((B,), channel.max_seq_len, dtype=torch.int32, device=device),
+            seq_lens=torch.full((B,), eff_seq, dtype=torch.int32, device=device),
             t_now_ns=torch.full((B,), 100_000_000, dtype=torch.int64, device=device),
             relative_time_rope=channel.relative_time_rope, max_seq_len=channel.max_seq_len, mode="kv",
         )
         dummy_obs = torch.randn(
             (B, self.chunk_size, self.cfg.max_action_dim), dtype=torch.bfloat16, device=device
         )
-        dummy_pref = torch.zeros((B, 10, self.action_dim), dtype=torch.bfloat16, device=device)
+        p_len = min(10, self.chunk_size - 1) if self.rtc_conditioning_supported else 0
+        dummy_pref = torch.zeros((B, p_len, self.action_dim), dtype=torch.bfloat16, device=device)
         calibrate_fp8_submodules(self, lambda: self.forward(dummy_obs, view, dummy_pref))
 
     def _step_velocity(
@@ -834,6 +879,7 @@ def build_smolvla(
                 slow_replicas.append(stages)
 
             ch_cal = slow_replicas[0][0].channel  # type: ignore[attr-defined]
+            cal_seq_len = slow_replicas[0][0].get_stream_prompt_meta(0)[0]  # type: ignore[attr-defined]
             sample_kv = (
                 capture_slow_calibration_sample(
                     slow_replicas[0], ch_cal, (cfg.num_cameras, 3, cfg.image_size, cfg.image_size)
@@ -846,7 +892,7 @@ def build_smolvla(
                 head = SmolVLAFastHead(cfg, device=f_dev)
                 head.load_weights(loader, f_dev)
                 head.eval()
-                head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv)
+                head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv, sample_seq_len=cal_seq_len)
                 fast_shards.append(head)
 
             loader.verify_all_consumed(ignore_keys=("model.vlm_with_expert.vlm.lm_head.weight",))
@@ -872,6 +918,7 @@ def build_smolvla(
             slow_replicas.append(stages)
 
         ch_cal = slow_replicas[0][0].channel  # type: ignore[attr-defined]
+        cal_seq_len = slow_replicas[0][0].get_stream_prompt_meta(0)[0]  # type: ignore[attr-defined]
         sample_kv = (
             capture_slow_calibration_sample(
                 slow_replicas[0], ch_cal, (cfg.num_cameras, 3, cfg.image_size, cfg.image_size)
@@ -883,7 +930,7 @@ def build_smolvla(
             f_dev = torch.device(f"cuda:{int(dev_id)}")
             head = SmolVLAFastHead(cfg, device=f_dev)
             head.eval()
-            head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv)
+            head.calibrate_fp8(ch_cal, f_dev, sample_kv=sample_kv, sample_seq_len=cal_seq_len)
             fast_shards.append(head)
 
     ch = slow_replicas[0][0].channel  # type: ignore[attr-defined]
@@ -896,6 +943,7 @@ def build_smolvla(
         slow_obs_shape=(cfg.num_cameras, 3, cfg.image_size, cfg.image_size),
         fast_obs_shape=(cfg.chunk_size, cfg.max_action_dim),
         fast_obs_is_noise=bool(fast_shards[0].fast_obs_is_noise),
+        rtc_conditioning_supported=bool(fast_shards[0].rtc_conditioning_supported),
         step_dt_ms=fast_shards[0].resolve_step_dt_ms(),
         max_q_len=max(64, cfg.chunk_size),
         max_q_heads=cfg.num_heads,

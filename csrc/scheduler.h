@@ -92,7 +92,9 @@ class TimeAwareScheduler {
       std::vector<torch::Tensor> act_out_static,
       torch::Tensor slow_pt_static,
       torch::Tensor slow_start_page_static,
-      torch::Tensor slow_tobs_static);
+      torch::Tensor slow_tobs_static,
+      torch::Tensor slow_stream_ids_static,
+      torch::Tensor slow_seqlens_static);
 
   int64_t fast_exec_cuda_stream_raw(int32_t shard_idx) const;
   int64_t slow_exec_cuda_stream_raw(int32_t replica_idx, int32_t stage_idx) const;
@@ -111,8 +113,16 @@ class TimeAwareScheduler {
   void reset_telemetry();
   void reset_rtc_stats();
 
-  void submit_slow_obs(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& obs);
+  std::pair<int32_t, int32_t> busy_slow_prompt_rows(int32_t stream_id) const;
+  void submit_slow_obs(
+      int32_t stream_id,
+      int64_t t_obs_ns,
+      const torch::Tensor& obs,
+      int32_t seq_len,
+      int32_t prompt_row);
   void submit_fast_obs(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& fast_obs);
+  void submit_fast_obs_batch(
+      const std::vector<int32_t>& stream_ids, int64_t t_obs_ns, const torch::Tensor& fast_obs_batch);
   bool submit_remote_hidden(int32_t stream_id, int64_t t_obs_ns, const torch::Tensor& hidden);
 
   std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, int64_t> sample_actions_at(
@@ -171,6 +181,9 @@ class TimeAwareScheduler {
     bool slow_pending{false};
     bool slow_inflight{false};
     int64_t slow_t_obs_ns{0};
+    int32_t slow_seq_len{0};
+    int32_t pending_prompt_row{-1};
+    int32_t inflight_prompt_row{-1};
     int64_t expected_slow_t_obs_ns{0};
     bool fast_pending{false};
     int64_t fast_t_obs_ns{0};
@@ -241,12 +254,15 @@ class TimeAwareScheduler {
     std::vector<int32_t> global_ids;
     std::vector<int32_t> local_slow_ids;
     std::vector<int64_t> tobs_ns;
+    std::vector<int32_t> seqlens;
+    std::vector<int32_t> prompt_slot_ids;
 
     bool dst_slots_allocated{false};
-    // Per fast_shard f: local_fast_ids, dst_global_slots, tobs_ns, and latest recorded p2p_event
+    // Per fast_shard f: local_fast_ids, dst_global_slots, tobs_ns, seqlens, and latest recorded p2p_event
     std::vector<std::vector<int32_t>> shard_local_fast_ids;
     std::vector<std::vector<int32_t>> shard_dst_slots;
     std::vector<std::vector<int64_t>> shard_tobs_ns;
+    std::vector<std::vector<int32_t>> shard_seqlens;
     std::vector<cudaEvent_t> shard_prev_p2p_ev;
   };
 
@@ -295,8 +311,12 @@ class TimeAwareScheduler {
     torch::Tensor slow_pt_static;
     torch::Tensor slow_start_page_static;
     torch::Tensor slow_tobs_static;
+    torch::Tensor slow_stream_ids_static;
+    torch::Tensor slow_seqlens_static;
 
     int64_t* h_slow_tobs{nullptr};
+    int32_t* h_slow_stream_ids{nullptr};
+    int32_t* h_slow_seqlens{nullptr};
     cudaEvent_t tobs_h2d_done_event{nullptr};
     cudaEvent_t slice_start_event{nullptr};
     cudaEvent_t slice_done_event{nullptr};
@@ -355,6 +375,7 @@ class TimeAwareScheduler {
   };
 
   FastBatchPlan plan_fast_batch(FastShard& fs, std::vector<FastReq>& pending_fast, int64_t now_ns);
+  void ingest_fast_obs_locked(int32_t stream_id, const torch::Tensor& fast_obs);
   void execute_fast_batch(
       FastShard& fs,
       const std::vector<FastReq>& pending_fast,
