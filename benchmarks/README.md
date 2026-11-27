@@ -18,7 +18,7 @@ Serving Physical Intelligence's unmodified static OpenPI `pi05_libero` checkpoin
 
 ### 1.2 Dynamically Fine-Tuned SOTA: From `1` Robot to `8` Concurrent Robots (`1x RTX 5090`)
 
-**`1` Robot (Single-Stream Ceiling)** — On the dynamically fine-tuned SOTA checkpoint (`rsj2003/libero-dynamic-paper-models`, `pi05/mixed_ft3000`), pure-PyTorch Tempo (`37.0 ms P50`, `0` underruns) lifts success by **`+34.1` pts** over synchronous PyTorch and matches `OpenPI JAX Async` (`71.5 ms` mean) `1:1` at the `20 Hz` single-robot simulation ceiling across all target speed tiers:
+**`1` Robot (Single-Stream Ceiling)** — On the dynamically fine-tuned SOTA checkpoint ([`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000)), pure-PyTorch Tempo (`37.0 ms P50`, `0` underruns) lifts success by **`+34.1` pts** over synchronous PyTorch and matches `OpenPI JAX Async` (`71.5 ms` mean) `1:1` at the `20 Hz` single-robot simulation ceiling across all target speed tiers:
 
 | Target Speed Tier (`N = 1`) | Synchronous PyTorch (`K = 4`) | `OpenPI JAX Async` (Current SOTA, `10 Hz`) | **Tempo** |
 | :--- | :---: | :---: | :---: |
