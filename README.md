@@ -52,7 +52,7 @@ For system design and architecture details, see [docs/architecture.md](./docs/ar
 Install on Linux (`Python >= 3.10`, `PyTorch >= 2.5`, `CUDA >= 12.0`, NVIDIA `SM80+`):
 
 ```bash
-git clone https://github.com/darthjaja6/tempo.git && cd tempo
+git clone https://github.com/tempo-robotics/tempo.git && cd tempo
 pip install -e . --no-build-isolation
 ```
 
