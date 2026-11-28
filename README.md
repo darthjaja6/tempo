@@ -25,9 +25,9 @@ On [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1x RTX 
 | `OpenPI JAX Async` | No | 57.8% | 60 ms |
 | **Tempo** | **No** | **60.9%** | **39 ms** |
 
-On the SOTA [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) checkpoint, Tempo matches native `OpenPI JAX` serving on a single robot (as both easily keep up with the benchmark's `20 Hz` control rate)—yet once scaled to **8 concurrent robots** on one `RTX 5090`, `OpenPI JAX` falls behind and collapses while Tempo holds firm:
+On the SOTA [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) checkpoint, Tempo matches native `OpenPI JAX` serving on a single robot (as both easily keep up with the benchmark's 20 Hz control rate)—yet once scaled to 8 concurrent robots on one RTX 5090, `OpenPI JAX` falls behind and collapses while Tempo holds firm:
 
-| 8 Concurrent Robots ([`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000)) | Success Rate | Mean Latency |
+| [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) serving method | Success Rate | Mean Latency |
 | :--- | :---: | :---: |
 | `OpenPI JAX Async` | 16.1% | 280 ms |
 | **Tempo** | **52.3% (3.25x)** | **27 ms** |
