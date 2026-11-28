@@ -34,7 +34,7 @@ def _load_ext():
     except ImportError as e:
         raise ImportError(
             "tempo C++/CUDA extension (_tempo_C) is not built. "
-            "Run 'pip install -e . --no-build-isolation' or 'python build_ext.py'."
+            "Run 'pip install -e . --no-build-isolation' or 'python setup.py build_ext --inplace'."
         ) from e
 
 
