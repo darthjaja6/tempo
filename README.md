@@ -16,7 +16,7 @@ Fast serving engine for System 1 + System 2 robot policies
 
 **Tempo** is a fast serving engine for dual-system robot policies, supporting mainstream VLAs (`pi05`, `GR00T`, `SmolVLA`) and custom System 1 + System 2 models.
 
-On [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1x RTX 5090`), Tempo **beats latency-retrained `VLASH` with zero retraining**:
+On [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1x RTX 5090`), Tempo **beats latency-retrained `VLASH` without retraining**:
 
 | 1 Robot ([`pi05_libero`](https://github.com/Physical-Intelligence/openpi), Zero Retraining) | Retrained | Success Rate | Mean Latency |
 | :--- | :---: | :---: | :---: |
@@ -25,11 +25,11 @@ On [`LIBERO-Dynamic`](https://github.com/renshaojie233/LIBERO-Dynamic) (`1x RTX 
 | `OpenPI JAX Async` | No | 57.8% | 60 ms |
 | **Tempo** | **No** | **60.9%** | **39 ms** |
 
-Even on the SOTA [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) checkpoint, Tempo matches `OpenPI JAX` on a single robot—and once scaled to **`8` concurrent robots** on one `RTX 5090`, `OpenPI JAX` collapses while Tempo holds firm:
+On the SOTA [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) checkpoint, Tempo matches native `OpenPI JAX` serving on a single robot (as both easily keep up with the benchmark's 20 Hz control rate)—yet once scaled to 8 concurrent robots on one RTX 5090, `OpenPI JAX` falls behind and collapses while Tempo holds firm:
 
-| 8 Concurrent Robots ([`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000)) | Success Rate | Mean Latency |
+| [`pi05/mixed_ft3000`](https://huggingface.co/rsj2003/libero-dynamic-paper-models/tree/main/pi05/mixed_ft3000) serving method | Success Rate | Mean Latency |
 | :--- | :---: | :---: |
-| `OpenPI JAX Async` (SOTA) | 16.1% | 280 ms |
+| `OpenPI JAX Async` | 16.1% | 280 ms |
 | **Tempo** | **52.3% (3.25x)** | **27 ms** |
 
 Tempo is fast with:
@@ -44,6 +44,8 @@ Tempo is easy to use with:
 - Standard PyTorch `nn.Module` interfaces (`SlowBackbone` and `FastHead`) for custom policies
 - [Colocated, disaggregated Slow/Fast, and pipeline-parallel](./docs/architecture.md#4-slowfast-disaggregation--edge-cloud-split-serving) multi-GPU placement
 - Edge-cloud split serving over TCP (`RemoteSlowServer` / `RemoteSlowClient`)
+
+For system design and architecture details, see [docs/architecture.md](./docs/architecture.md).
 
 ## Getting Started
 
